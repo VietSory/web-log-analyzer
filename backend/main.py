@@ -1,7 +1,5 @@
-# backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-# Import cái router từ scan.py
 from routers import scan 
 
 app = FastAPI()
@@ -13,7 +11,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Kích hoạt router
 app.include_router(scan.router , tags=["Log Scanning"])
 
 if __name__ == "__main__":
