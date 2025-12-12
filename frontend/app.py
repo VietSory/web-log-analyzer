@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from utils import init_session_state, load_custom_css
+from utils import init_session_state, load_custom_css , API_URL
 from views import home, dashboard, inspector, ml_inspector
 import time
 
@@ -16,7 +16,6 @@ st.set_page_config(
 init_session_state()
 load_custom_css()
 
-API_URL = "http://127.0.0.1:8000"
 
 # 3. SIDEBAR (Điều hướng & Upload)
 with st.sidebar:

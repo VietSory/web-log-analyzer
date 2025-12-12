@@ -1,5 +1,7 @@
 import streamlit as st
 
+API_URL = "http://127.0.0.1:8000"
+
 def init_session_state():
     """Khởi tạo các biến toàn cục cho phiên làm việc"""
     defaults = {

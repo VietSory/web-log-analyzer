@@ -21,5 +21,4 @@ def render_home_page():
         st.info("💡 Mẹo: Hãy bắt đầu bằng việc upload file log mẫu 'access_log.csv'.")
 
     with col2:
-        # Có thể thêm hình ảnh minh họa hoặc animation ở đây
         st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=150)

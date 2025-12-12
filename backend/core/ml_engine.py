@@ -6,22 +6,17 @@ from datetime import datetime
 
 class LogAnomalyDetector:
     def __init__(self, model_dir: str):
-        """
-        model_dir: Thư mục chứa model (.keras), scaler (.pkl), label_encoders (.pkl)
-        """
         self.model_dir = model_dir
         self.model = None
         self.scaler = None
         self.label_encoders = None
-        self.threshold = 0.05 # Giá trị mặc định
+        self.threshold = None 
 
     def load_resources(self):
-        """Load toàn bộ tài nguyên AI. Cần gọi hàm này khi khởi động Server."""
         print(f"--- Loading AI Resources from {self.model_dir} ---")
         
         # 1. Load Model (.keras)
         try:
-            # Import bên trong để tránh lỗi nếu chưa cài TF
             from tensorflow.keras.models import load_model # type: ignore
             
             model_path = os.path.join(self.model_dir, 'autoencoder_model.keras')
@@ -47,12 +42,20 @@ class LogAnomalyDetector:
                 self.label_encoders = joblib.load(le_path)
                 print("✅ Label Encoders loaded")
 
+            # --- LOGIC MỚI CHO THRESHOLD ---
             if os.path.exists(th_path):
+                # Load từ file train (Chính xác nhất)
                 self.threshold = joblib.load(th_path)
-                print(f"✅ Threshold loaded: {self.threshold}")
+                print(f"✅ Threshold loaded from Train Model: {self.threshold:.6f}")
+            else:
+                # Fallback nếu không có file
+                self.threshold = 0.05
+                print(f"⚠️ Threshold file not found. Using default fallback: {self.threshold}")
                 
         except Exception as e:
             print(f"❌ Error loading Pickle files: {e}")
+            # Đảm bảo threshold luôn có giá trị để không crash
+            if self.threshold is None: self.threshold = 0.05
 
     def safe_label_transform(self, encoder, values):
         """Xử lý giá trị lạ (New IP/Url) an toàn để không bị crash."""
@@ -134,19 +137,18 @@ class LogAnomalyDetector:
             # Tính MSE
             mse = np.mean(np.power(input_data - reconstructions, 2), axis=1)
             
-            # So sánh Threshold
-            current_threshold = self.threshold if self.threshold else 0.05
-            anomaly_indices = np.where(mse > current_threshold)[0]
+            curr_thresh = self.threshold if self.threshold is not None else 0.05
+            # Chỉ lấy index vượt qua ngưỡng nghiêm ngặt này
+            anomaly_indices = np.where(mse > curr_thresh)[0]
 
-            print(f"🔍 Scan complete. Found {len(anomaly_indices)} anomalies.")
-
+            print(f"🔍 Scan complete. Threshold={curr_thresh:.4f}. Found {len(anomaly_indices)} anomalies.")
             for idx in anomaly_indices:
                 row = processed_df.iloc[idx]
                 loss = float(mse[idx])
 
-                severity = "Low"
-                if loss > current_threshold * 2: severity = "Medium"
-                if loss > current_threshold * 4: severity = "High"
+                # 3. GÁN CỨNG LÀ HIGH (Màu đỏ)
+                # Vì đã qua được bộ lọc strict_threshold thì chắc chắn là nguy hiểm
+                severity = "High"
 
                 threats.append({
                     "ip": str(row.get('ip', 'Unknown')),
