@@ -33,13 +33,8 @@ def render_security_monitor():
 
     st.title("🛡️ AI Security Monitor")
     st.markdown(f"Phát hiện bất thường cho file: **{filename}**")
-
-    # --- LẤY DỮ LIỆU ---
-    # Không lọc gì cả, lấy toàn bộ danh sách trả về từ Backend
     threats = st.session_state.get('threats_list', [])
     threat_count = len(threats)
-
-    # --- 1. TRẠNG THÁI HỆ THỐNG ---
     if threat_count == 0:
         status_props = {
             "bg": "#d4edda", "color": "#155724", "border": "#c3e6cb",
@@ -67,7 +62,6 @@ def render_security_monitor():
         </div>
     """, unsafe_allow_html=True)
 
-    # --- 2. NÚT QUÉT ---
     if st.button("🔄 Quét ngay (AI Scan)", type="primary", use_container_width=True):
         with st.spinner("AI đang phân tích log..."):
             try:
@@ -82,33 +76,54 @@ def render_security_monitor():
             except Exception as e:
                 st.error(f"Không thể kết nối Backend: {e}")
 
-    # --- 3. DANH SÁCH CẢNH BÁO ---
     st.subheader(f"📋 Nhật ký Cảnh báo ({threat_count})")
     
     if not threats:
         st.info("Hệ thống sạch.")
     else:
-        # Header
+        if not st.session_state.get('stats_data'):
+            try:
+                # Gọi API lấy thống kê ngầm để có dữ liệu lưu
+                s_res = requests.get(f"{API_URL}/api/stats/{filename}")
+                if s_res.status_code == 200:
+                    st.session_state['stats_data'] = s_res.json()
+            except: pass
+        if st.session_state.get('stats_data'):
+            col_save, col_info = st.columns([1, 3])
+            with col_save:
+                if st.button("💾 Lưu vào Lịch sử", type="secondary", use_container_width=True):
+                    payload = {
+                        "filename": filename,
+                        "stats": st.session_state['stats_data'],
+                        "threats": threats
+                    }
+                    with st.spinner("Đang lưu báo cáo..."):
+                        try:
+                            res = requests.post(f"{API_URL}/api/history/save", json=payload)
+                            if res.status_code == 200:
+                                st.success("✅ Đã lưu vào Lịch sử thành công!")
+                                time.sleep(1)
+                            else:
+                                st.error(f"Lỗi: {res.text}")
+                        except Exception as e:
+                            st.error(str(e))
+                            
         cols = st.columns([1.5, 2, 3, 2, 1.5])
         headers = ["Mức độ", "Thời gian", "Chi tiết (Path)", "IP Nguồn", "Loss Score"]
         for col, h in zip(cols, headers):
             col.markdown(f"**{h}**")
         st.divider()
         
-        
         for t in threats:
-            c1, c2, c3, c4, c5 = st.columns([1.5, 2, 3, 2, 1.5])
-            
+            c1, c2, c3, c4, c5 = st.columns([1.5, 2, 3, 2, 1.5])           
             with c1: 
                 st.markdown('<span class="danger-badge">🔴 NGUY HIỂM</span>', unsafe_allow_html=True)
-            
             with c2: st.write(t['time'])
             with c3: st.write(f"`{t['details']}`") 
             with c4: st.code(t['ip'])
             with c5: st.write(f"**{t['reconstruction_error']:.4f}**")
-            
             st.markdown("<div class='alert-row'></div>", unsafe_allow_html=True)
-
+            
         if st.button("Clear All Logs", type="secondary"):
             st.session_state['threats_list'] = []
             st.rerun()

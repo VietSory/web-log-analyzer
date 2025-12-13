@@ -1,7 +1,6 @@
 import re
 import pandas as pd
 
-# Regex đã sửa: Thêm \s*.* ở cuối để bắt ký tự "-" thừa trong log của bạn
 LOG_PATTERN = re.compile(
     r'(?P<ip>^[\d\.]+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<request>.*?)" (?P<status>\d{3}) (?P<size>\S+) "(?P<referrer>.*?)" "(?P<user_agent>.*?)"\s*.*'
 )
@@ -38,11 +37,10 @@ def parse_log_file(filepath: str) -> pd.DataFrame:
         df = pd.DataFrame(data)
         if df.empty: return pd.DataFrame()
 
-        # 4. Ép kiểu dữ liệu (Quan trọng cho Dashboard)
+        # 4. Ép kiểu dữ liệu 
         df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(200)
         
-        # Parse ngày tháng: Format khớp với log của bạn (22/Jan/2019...)
-        # %z dùng để xử lý múi giờ +0330
+        # Parse ngày tháng ,%z dùng để xử lý múi giờ +0330
         df['datetime'] = pd.to_datetime(df['datetime'], format='%d/%b/%Y:%H:%M:%S %z', errors='coerce')
         
         return df

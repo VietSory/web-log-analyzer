@@ -12,8 +12,6 @@ def render_dashboard():
         return
 
     st.caption("Tổng quan hệ thống dựa trên dữ liệu log đã tải lên.")
-
-    # Gọi API Backend
     with st.spinner("Đang đồng bộ dữ liệu từ Server..."):
         try:
             response = requests.get(f"{API_URL}/api/stats/{filename}")
@@ -26,31 +24,23 @@ def render_dashboard():
             st.error(f"Không thể kết nối Backend: {e}")
             return
 
-        # 1. Các chỉ số KPI (Metrics)
+        # Các chỉ số KPI (Metrics)
         col1, col2 , col3, col4 = st.columns(4)
         
-        # Total Requests
         total = data.get("total_requests", 0)
         col1.metric("Total Requests", f"{total:,}", border=True)
-        
-        # Unique IPs
         unique = data.get("unique_ips", 0)
         col2.metric("Unique IPs", f"{unique:,}", border=True)
-        
-        # Avg Body Size
         size = data.get("avg_body_size", 0)
         col3.metric("Avg Body Size", f"{size} KB", border=True)
-        
-        # Error Rate
         err_rate = data.get("error_rate", 0)
         delta_color = "normal" if err_rate < 5 else "inverse"
         col4.metric("Error Rate (5xx)", f"{err_rate}%", delta_color=delta_color, border=True)
         
         st.divider()
         
-        # 2. Biểu đồ
+        # Biểu đồ
         c1, c2 = st.columns([2, 1])
-        
         with c1:
             st.subheader("📈 Traffic Over Time")
             traffic_data = data.get("traffic_chart", {})
@@ -64,13 +54,11 @@ def render_dashboard():
                 st.line_chart(chart_df, color="#00FF00")
             else:
                 st.info("Không có dữ liệu thời gian trong file log.")
-            
         with c2:
             st.subheader("🍩 Status Codes")
             status_dict = data.get("status_distribution", {})
             
             if status_dict:
-                # Chuyển đổi Dict thành DataFrame
                 status_df = pd.DataFrame(list(status_dict.items()), columns=['Status', 'Count'])
                 # Sắp xếp index theo Status code
                 status_df = status_df.set_index('Status')

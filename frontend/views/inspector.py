@@ -12,7 +12,6 @@ def render_inspector():
         st.warning("Vui lòng upload file trước.")
         return
 
-    # 1. Lấy dữ liệu từ Backend
     if 'raw_logs' not in st.session_state or st.session_state.get('last_log_file') != filename:
         with st.spinner("Đang tải dữ liệu log chi tiết..."):
             try:
@@ -33,7 +32,6 @@ def render_inspector():
         st.info("File log rỗng hoặc không phân tích được dữ liệu.")
         return
 
-    # 2. Khu vực bộ lọc (Filter)
     with st.expander("🛠️ Bộ lọc nâng cao", expanded=True):
         c1, c2 = st.columns([1, 3])
         
@@ -47,10 +45,9 @@ def render_inspector():
                 options=available_status
             )
 
-    # 3. Áp dụng Logic lọc (Pandas Filtering)
+    # Áp dụng Logic lọc (Pandas Filtering)
     df_display = df.copy()
 
-    # Lọc theo IP (nếu có nhập)
     if search_ip:
         if 'ip' in df_display.columns:
             # Lọc chứa chuỗi (contains), case=False để không phân biệt hoa thường
@@ -63,13 +60,11 @@ def render_inspector():
         if 'status' in df_display.columns:
             df_display = df_display[df_display['status'].isin(filter_status)]
 
-    # 4. Hiển thị kết quả
     st.caption(f"Đang hiển thị {len(df_display)} / {len(df)} dòng log.")
     
     # Sắp xếp lại cột cho dễ nhìn (nếu cột tồn tại)
     priority_cols = ['datetime', 'ip', 'method', 'path', 'status', 'size']
     cols_to_show = [c for c in priority_cols if c in df_display.columns]
-    # Thêm các cột còn lại (referer, user_agent...)
     cols_to_show += [c for c in df_display.columns if c not in cols_to_show]
     
     st.dataframe(

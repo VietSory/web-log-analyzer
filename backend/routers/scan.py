@@ -1,19 +1,26 @@
 import os
 import shutil
+from typing import Any, Dict, List
 import pandas as pd 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from core.parser import parse_log_file
 from core.ml_engine import LogAnomalyDetector
+from database import save_manual_report, get_all_history,get_scan_details,delete_scan_history
+from pydantic import BaseModel
 
 router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Khởi tạo AI
 ai_engine = LogAnomalyDetector(model_dir="models")
 def startup_load_model():
     ai_engine.load_resources()
 startup_load_model()
+
+class SavePayload(BaseModel):
+    filename: str
+    stats: Dict[str, Any]
+    threats: List[Dict[str, Any]]
 
 @router.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -43,21 +50,18 @@ def get_stats(filename: str):
     df = parse_log_file(file_path) 
     if df.empty: return {"error": "No data parsed"}
     
-    # 1. Tính Metrics
+    #  Tính Metrics
     total_req = len(df)
     unique_ips = int(df['ip'].nunique()) if 'ip' in df.columns else 0
     avg_size = round(float(df['size'].mean()) / 1024, 2) if 'size' in df.columns else 0
-    
     error_5xx = df[df['status'] >= 500].shape[0] if 'status' in df.columns else 0
     error_rate = round((error_5xx / total_req) * 100, 2) if total_req > 0 else 0
     
-    # 2. Status Distribution (Top 5)
     status_counts = {}
     if 'status' in df.columns:
         s_counts = df['status'].value_counts().head(5)
         status_counts = {str(k): int(v) for k, v in s_counts.items()}
 
-    # 3. Traffic Over Time (FIX LỖI PYLANCE)
     chart_data = {}
     if 'datetime' in df.columns:
         df_time = df.dropna(subset=['datetime'])
@@ -91,3 +95,90 @@ def get_logs(filename: str):
     if 'datetime' in df.columns:
         df['datetime'] = df['datetime'].astype(str)
     return df.head(10000).to_dict(orient="records")
+
+@router.post("/api/history/save")
+def save_history(payload: SavePayload):
+    try:
+        history_id = save_manual_report(payload.filename, payload.stats, payload.threats)
+        return {"status": "success", "history_id": history_id}
+    except Exception as e:
+        print(f"Error saving history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/api/history")
+def get_history():
+    try:
+        history = get_all_history()
+        return history
+    except Exception as e:
+        print(f"Error retrieving history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/history/{history_id}")
+def get_history_details(history_id: int):
+    try:
+        details = get_scan_details(history_id)
+        return details
+    except Exception as e:
+        print(f"Error retrieving history details: {e}")
+        raise HTTPException(status_code=404, detail="History not found")
+
+@router.get("/api/history/{filename}")
+def get_history_logs(filename: str):
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path): 
+        raise HTTPException(status_code=404, detail="File not found")
+    df = parse_log_file(file_path)
+    if df.empty: 
+        return []
+    if 'datetime' in df.columns:
+        df['datetime'] = df['datetime'].astype(str)
+    return df.head(10000).to_dict(orient="records")
+
+@router.get("/api/stats/{filename}")
+def get_history_stats(filename: str):
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path): raise HTTPException(status_code=404, detail="File not found")
+        
+    df = parse_log_file(file_path) 
+    if df.empty: return {"error": "No data parsed"}
+    
+    total_req = len(df)
+    unique_ips = int(df['ip'].nunique()) if 'ip' in df.columns else 0
+    avg_size = round(float(df['size'].mean()) / 1024, 2) if 'size' in df.columns else 0
+    
+    error_5xx = df[df['status'] >= 500].shape[0] if 'status' in df.columns else 0
+    error_rate = round((error_5xx / total_req) * 100, 2) if total_req > 0 else 0
+    
+    status_counts = {}
+    if 'status' in df.columns:
+        s_counts = df['status'].value_counts().head(5)
+        status_counts = {str(k): int(v) for k, v in s_counts.items()}
+
+    chart_data = {}
+    if 'datetime' in df.columns:
+        df_time = df.dropna(subset=['datetime'])
+        if not df_time.empty:
+            traffic = df_time.resample('H', on='datetime').size()
+            ts_list = traffic.index.tolist()
+            cnt_list = traffic.values.tolist()
+            
+            for ts, count in zip(ts_list, cnt_list):
+                if count > 0:
+                    chart_data[ts.strftime('%Y-%m-%d %H:%M')] = int(count)
+
+    return {
+        "total_requests": total_req,
+        "unique_ips": unique_ips,
+        "avg_body_size": avg_size,
+        "error_rate": error_rate,
+        "status_distribution": status_counts,
+        "traffic_chart": chart_data
+    }
+
+@router.delete("/api/history/{history_id}")
+def delete_history_endpoint(history_id: int):
+    success = delete_scan_history(history_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete record")
+    return {"status": "success", "deleted_id": history_id}

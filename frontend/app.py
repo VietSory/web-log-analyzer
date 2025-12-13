@@ -1,10 +1,9 @@
 import streamlit as st
 import requests
 from utils import init_session_state, load_custom_css , API_URL
-from views import home, dashboard, inspector, ml_inspector
+from views import home, dashboard, inspector, ml_inspector, history
 import time
 
-# 1. Cấu hình trang (Phải nằm đầu tiên)
 st.set_page_config(
     page_title="Data Analyzer",
     page_icon="🛡️",
@@ -12,12 +11,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. Khởi tạo & CSS
 init_session_state()
 load_custom_css()
 
-
-# 3. SIDEBAR (Điều hướng & Upload)
 with st.sidebar:
     st.header("🎛️ Control Panel")
     
@@ -44,13 +40,12 @@ with st.sidebar:
                     st.error(f"Connection Error: {e}")
     
     st.divider()
-    # Logic: Nếu chưa có file thì chỉ cho xem Home
     if not st.session_state["current_filename"]:
         st.warning("Vui lòng upload file để mở khóa các tính năng.")
         menu_options = ["🏠 Home"]
     else:
         st.success(f"File đang mở: {st.session_state['current_filename']}")
-        menu_options = ["🏠 Home", "📊 Dashboard", "🔍 Inspector", "🛡️ AI Monitor"]
+        menu_options = ["🏠 Home", "📊 Dashboard", "🔍 Inspector", "🛡️ AI Monitor", "📜 History"]
         
     selected_view = st.radio("Go to:", menu_options)
 
@@ -66,3 +61,7 @@ elif selected_view == "🔍 Inspector":
     
 elif selected_view == "🛡️ AI Monitor":
     ml_inspector.render_security_monitor()
+
+elif selected_view == "📜 History":
+    history.render_history()
+    
