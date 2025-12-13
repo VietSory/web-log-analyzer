@@ -29,7 +29,7 @@ def load_custom_css():
                 border-radius: 10px;
                 border: 1px solid #333;
                 background-color: #1e1e1e; /* Màu nền tối nhẹ */
-                padding: 15px;
+                padding: 15px;cl
             }
 
             /* 3. Status Banner đẹp hơn */
