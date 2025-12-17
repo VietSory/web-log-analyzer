@@ -6,7 +6,7 @@
 ![TensorFlow](https://img.shields.io/badge/AI-TensorFlow%2FKeras-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white)
 ![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
 
-> **Giải pháp phân tích Log máy chủ web tự động sử dụng mô hình Deep Learning (Autoencoder) kết hợp với luật (Rule-based) để phát hiện bất thường và định danh các cuộc tấn công mạng.**
+> **Giải pháp phân tích Log máy chủ web tự động sử dụng mô hình Deep Learning (Autoencoder) kết hợp với luật (Rule-based) để phát hiện bất thường trong log từ đó định danh các cuộc tấn công mạng.**
 
 ## 📑 Mục lục
 - [Giới thiệu](#-giới-thiệu)
