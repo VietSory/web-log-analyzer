@@ -23,8 +23,6 @@
 **Web Log Analyzer** là công cụ hỗ trợ Quản trị viên hệ thống (SysAdmin) trong việc giám sát nhật ký truy cập (Access Logs).
 Khác với các công cụ truyền thống chỉ dựa trên luật (Signature-based), hệ thống này áp dụng phương pháp tiếp cận lai (**Hybrid Approach**):
 1.  **AI (Autoencoder):** Học hành vi bình thường để phát hiện các bất thường chưa biết (Unknown Threats/Zero-day).
-2.  **Rule-based Engine:** Định danh cụ thể loại tấn công (SQLi, XSS...) dựa trên các mẫu (patterns) đã biết.
-
 ---
 
 ## 🚀 Tính năng nổi bật
