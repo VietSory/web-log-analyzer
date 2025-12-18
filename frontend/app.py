@@ -31,7 +31,6 @@ with st.sidebar:
         
         if uploaded_files:
             if st.button(f"🚀 Xử lý {len(uploaded_files)} file", use_container_width=True):
-                
                 # Thanh tiến trình
                 progress_bar = st.progress(0)
                 status_text = st.empty()

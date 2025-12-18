@@ -14,7 +14,7 @@ DATA_FILE = "./training_data.csv"
 OUTPUT_DIR = "./models/"            
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Regex Parser (Đồng bộ với Backend)
+# Regex Parser 
 LOG_PATTERN = re.compile(
     r'(?P<ip>^[\d\.]+) \S+ \S+ \[(?P<timestamp>.*?)\] "(?P<request>.*?)" (?P<status>\d{3}) (?P<size>\S+) "(?P<referrer>.*?)" "(?P<user_agent>.*?)"\s*.*'
 )
@@ -48,12 +48,10 @@ def parse_log_for_train(filepath):
                     
                     # Trích xuất giờ
                     try:
-                        # Kiểm tra sơ bộ để tránh lỗi parse
                         if "Jan" in row['timestamp'] or "Feb" in row['timestamp']: 
                             dt = pd.to_datetime(row['timestamp'], format='%d/%b/%Y:%H:%M:%S %z', errors='coerce')
                             row['hour'] = dt.hour if pd.notnull(dt) else 0
                         else:
-                            # Fallback nếu format timestamp khác
                             row['hour'] = 0
                     except:
                         row['hour'] = 0
@@ -78,7 +76,6 @@ def train():
         le = LabelEncoder()
         if col not in df.columns: df[col] = "unknown"
         df[col] = df[col].astype(str)
-        
         # Fit & Transform
         df[col + '_enc'] = le.fit_transform(df[col])
         label_encoders[col] = le
@@ -86,9 +83,7 @@ def train():
     print("✅ Đã mã hóa Text sang Số.")
 
     # 3. Prepare Vector (8 features)
-    feature_cols = ['ip_enc', 'method_enc', 'path_enc', 'status', 'size', 'referrer_enc', 'user_agent_enc', 'hour']
-    
-    # Đảm bảo đủ cột
+    feature_cols = ['ip_enc', 'method_enc', 'path_enc', 'status', 'size', 'referrer_enc', 'user_agent_enc', 'hour']    
     for col in feature_cols:
         if col not in df.columns:
             df[col] = 0
@@ -99,20 +94,16 @@ def train():
     scaler = MinMaxScaler()
     X_scaled = scaler.fit_transform(X)
     print("✅ Đã chuẩn hóa (Scaling).")
-
-    # 5. Build Autoencoder Model (Sử dụng cách import trực tiếp)
+    
+    # 5. Build Autoencoder Model 
     input_dim = X_scaled.shape[1] # 8
-    
     input_layer = Input(shape=(input_dim,))
-    
     # Encoder
     encoded = Dense(16, activation='relu')(input_layer)
     encoded = Dense(8, activation='relu')(encoded)
-    
     # Decoder
     decoded = Dense(16, activation='relu')(encoded)
     output_layer = Dense(input_dim, activation='sigmoid')(decoded)
-
     autoencoder = Model(inputs=input_layer, outputs=output_layer)
     autoencoder.compile(optimizer='adam', loss='mse')
 
@@ -124,7 +115,7 @@ def train():
         batch_size=128,
         shuffle=True,
         validation_split=0.1,
-        verbose=1 # Tắt log chi tiết để đỡ rối
+        verbose=1 
     )
 
     # 7. Tính Threshold
@@ -133,8 +124,6 @@ def train():
     threshold = np.mean(mse) + 4 * np.std(mse)
     
     print(f"🎯 Ngưỡng phát hiện (Threshold): {threshold:.6f}")
-
-    # 8. Lưu file
     autoencoder.save(os.path.join(OUTPUT_DIR, 'autoencoder_model.keras'))
     joblib.dump(scaler, os.path.join(OUTPUT_DIR, 'scaler.pkl'))
     joblib.dump(label_encoders, os.path.join(OUTPUT_DIR, 'label_encoders.pkl'))

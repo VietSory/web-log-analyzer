@@ -16,8 +16,7 @@ def parse_log_file(filepath: str) -> pd.DataFrame:
                 match = LOG_PATTERN.match(line)
                 if match:
                     row = match.groupdict()
-                    
-                    # 1. Tách Method/Path
+                    # Tách Method/Path
                     parts = row['request'].split()
                     if len(parts) >= 2:
                         row['method'] = parts[0]
@@ -25,22 +24,15 @@ def parse_log_file(filepath: str) -> pd.DataFrame:
                     else:
                         row['method'] = "unknown"
                         row['path'] = row['request']
-                    
-                    # 2. Xử lý Size
-                    row['size'] = 0 if row['size'] == '-' else int(row['size'])
-                    
-                    # 3. Đổi tên timestamp -> datetime
+                    # Xử lý Size
+                    row['size'] = 0 if row['size'] == '-' else int(row['size'])                    
                     row['datetime'] = row.pop('timestamp')
-                    
                     data.append(row)
 
         df = pd.DataFrame(data)
         if df.empty: return pd.DataFrame()
-
-        # 4. Ép kiểu dữ liệu 
+        # Ép kiểu dữ liệu 
         df['status'] = pd.to_numeric(df['status'], errors='coerce').fillna(200)
-        
-        # Parse ngày tháng ,%z dùng để xử lý múi giờ +0330
         df['datetime'] = pd.to_datetime(df['datetime'], format='%d/%b/%Y:%H:%M:%S %z', errors='coerce')
         
         return df
