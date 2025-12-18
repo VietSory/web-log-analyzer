@@ -7,13 +7,33 @@ from utils import API_URL, load_custom_css
 def render_history():
     load_custom_css()
     st.title("📜 Thư viện Báo cáo")
-
     try:
         res = requests.get(f"{API_URL}/api/history")
         history_data = res.json() if res.status_code == 200 else []
     except:
         st.error("🔌 Mất kết nối tới Backend.")
         return
+    with st.sidebar:
+        st.divider()
+        st.header("⚠️ Quản lý Dữ liệu")
+        
+        with st.expander("🧨 Xóa toàn bộ dữ liệu", expanded=False):
+            st.warning("Hành động này sẽ xóa TOÀN BỘ lịch sử quét.")
+            
+            if st.button("Xác nhận Xóa SẠCH", type="primary", use_container_width=True):
+                with st.spinner("Đang dọn dẹp database..."):
+                    try:
+                        # Gọi API xóa tất cả
+                        res = requests.delete(f"{API_URL}/api/history/clear-all")
+                        if res.status_code == 200:
+                            st.toast("✅ Đã xóa sạch dữ liệu! ID đã reset.", icon="🗑️")
+                            time.sleep(1.5)
+                            st.rerun() 
+                        else:
+                            st.error(f"Lỗi Server: {res.text}")
+                    except Exception as e:
+                        st.error(f"Lỗi kết nối: {e}")
+                        
     if not history_data:
         st.info("📭 Chưa có lịch sử quét nào.")
         return
@@ -22,7 +42,6 @@ def render_history():
     df_hist['display_label'] = df_hist.apply(
         lambda x: f"ID {x['id']} | {x['filename']} | {x['scan_date']}", axis=1
     )
-
     with st.container():
         c_search, c_stats = st.columns([3, 1])
         with c_search:
@@ -33,7 +52,6 @@ def render_history():
             )
         with c_stats:
             st.metric("Tổng báo cáo", len(df_hist), label_visibility="visible")
-
     if search_query:
         df_filtered = df_hist[
             df_hist['filename'].str.contains(search_query, case=False) | 
@@ -42,10 +60,8 @@ def render_history():
         ]
     else:
         df_filtered = df_hist
-
     with st.container(border=True):
-        st.subheader(f"🗂️ Danh sách ({len(df_filtered)} kết quả)")
-        
+        st.subheader(f"🗂️ Danh sách ({len(df_filtered)} kết quả)") 
         st.dataframe(
             df_filtered,
             column_config={
@@ -54,13 +70,12 @@ def render_history():
                 "scan_date": st.column_config.TextColumn("Thời gian lưu", width="medium"),
                 "total_requests": st.column_config.NumberColumn("Reqs", help="Tổng số request"),
                 "error_rate": st.column_config.NumberColumn("Lỗi %", format="%.2f%%"),
-                "display_label": None # Ẩn cột này đi
+                "display_label": None 
             },
             use_container_width=True,
             hide_index=True,
             height=300
         )
-
     st.write("") 
 
     if df_filtered.empty:
@@ -75,10 +90,8 @@ def render_history():
                 label_visibility="collapsed"
             )
             selected_id = int(selected_label.split("|")[0].replace("ID", "").strip())
-
         with c_btn_view:
             btn_view = st.button("📂 Xem Chi tiết", type="primary", use_container_width=True)
-
         with c_btn_del:
             if st.button("🗑️ Xóa", type="secondary", use_container_width=True):
                 try:
@@ -91,7 +104,6 @@ def render_history():
                         st.error("Xóa thất bại.")
                 except Exception as e:
                     st.error(f"Lỗi: {e}")
-
         if btn_view:
             with st.spinner("Đang tải dữ liệu báo cáo..."):
                 try:
@@ -126,7 +138,6 @@ def render_report_detail(detail):
             st.line_chart(df_tf.set_index('Time').sort_index(), color="#00FF00", height=200)
         else:
             st.info("Không có dữ liệu biểu đồ.")
-            
     with c2:
         st.markdown("**🍩 Mã trạng thái**")
         st_chart = detail.get('status_distribution', {})
@@ -136,13 +147,11 @@ def render_report_detail(detail):
     # 3. Danh sách mối đe dọa
     st.subheader("🚨 Nhật ký Mối đe dọa")
     saved_threats = detail.get('threats', [])
-    
     if saved_threats:
         with st.container(border=True):
             st.error(f"Phát hiện {len(saved_threats)} hành vi bất thường.")
             df_t = pd.DataFrame(saved_threats)
             df_show = df_t[['time', 'ip', 'reconstruction_error', 'details']].copy()
-            
             st.dataframe(
                 df_show,
                 use_container_width=True,

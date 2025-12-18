@@ -7,11 +7,9 @@ def render_inspector():
     filename = st.session_state.get("current_filename", "Unknown")
     st.title("🔍 Raw Data Inspector")
     st.markdown(f"Công cụ tra cứu dữ liệu thô cho file: **{filename}**")
-    
     if filename == "Unknown" or not filename:
         st.warning("Vui lòng upload file trước.")
         return
-
     if 'raw_logs' not in st.session_state or st.session_state.get('last_log_file') != filename:
         with st.spinner("Đang tải dữ liệu log chi tiết..."):
             try:
@@ -31,23 +29,17 @@ def render_inspector():
     if df.empty:
         st.info("File log rỗng hoặc không phân tích được dữ liệu.")
         return
-
     with st.expander("🛠️ Bộ lọc nâng cao", expanded=True):
         c1, c2 = st.columns([1, 3])
-        
         with c1:
             search_ip = st.text_input("Tìm kiếm theo IP:", placeholder="VD: 192.168.1.1")
-        
         with c2:
             available_status = sorted(df['status'].unique()) if 'status' in df.columns else []
             filter_status = st.multiselect(
                 "Lọc theo Status Code:", 
                 options=available_status
             )
-
-    # Áp dụng Logic lọc (Pandas Filtering)
     df_display = df.copy()
-
     if search_ip:
         if 'ip' in df_display.columns:
             # Lọc chứa chuỗi (contains), case=False để không phân biệt hoa thường

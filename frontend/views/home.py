@@ -4,7 +4,6 @@ def render_home_page():
     st.title("👋 Chào mừng Quản trị viên")
     
     col1, col2 = st.columns([2, 1])
-    
     with col1:
         st.markdown("""
         ### Hệ thống Phân tích Log & Phát hiện Tấn công AI
@@ -19,6 +18,5 @@ def render_home_page():
         """)
         
         st.info("💡 Mẹo: Hãy bắt đầu bằng việc upload file log mẫu 'access_log.csv'.")
-
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/2092/2092663.png", width=150)

@@ -75,7 +75,7 @@ def save_manual_report(filename , stats, threats):
         ''', threat_data)
     conn.commit()
     conn.close()
-    
+
     return history_id
 
 def get_all_history():
@@ -89,7 +89,6 @@ def get_scan_details(history_id):
     history = conn.execute('SELECT * FROM scan_history WHERE id = ?', (history_id,)).fetchone()
     threats = conn.execute('SELECT * FROM scan_threats WHERE history_id = ?', (history_id,)).fetchall()
     conn.close()
-    
     if history:
         history_dict = dict(history)
         history_dict['traffic_data'] = json.loads(history_dict['traffic_data']) if history_dict['traffic_data'] else {}
@@ -108,6 +107,23 @@ def delete_scan_history(history_id):
         return True
     except Exception as e:
         print(f"Error deleting history: {e}")
+        return False
+    finally:
+        conn.close()
+        
+def clear_all_data():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM scan_threats")
+        cursor.execute("DELETE FROM scan_history")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='scan_history'")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='scan_threats'")
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error clearing data: {e}")
         return False
     finally:
         conn.close()

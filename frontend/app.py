@@ -17,7 +17,7 @@ load_custom_css()
 if "uploaded_file_list" not in st.session_state:
     st.session_state["uploaded_file_list"] = []
 
-# 3. SIDEBAR
+# SIDEBAR
 with st.sidebar:
     st.header("🎛️ Control Panel")
     
@@ -26,7 +26,7 @@ with st.sidebar:
         uploaded_files = st.file_uploader(
             "Chọn file (hỗ trợ chọn nhiều):", 
             type=["csv", "txt", "log"], 
-            accept_multiple_files=True # <--- Quan trọng
+            accept_multiple_files=True 
         )
         
         if uploaded_files:
@@ -38,15 +38,12 @@ with st.sidebar:
                 
                 for i, file_obj in enumerate(uploaded_files):
                     status_text.caption(f"Đang tải lên: {file_obj.name}...")
-                    
                     files = {"file": (file_obj.name, file_obj, "multipart/form-data")}
                     try:
                         res = requests.post(f"{API_URL}/api/upload", files=files)
                         if res.status_code == 200:
-                            # Thêm vào danh sách quản lý nếu chưa có
                             if file_obj.name not in st.session_state["uploaded_file_list"]:
-                                st.session_state["uploaded_file_list"].append(file_obj.name)
-                            
+                                st.session_state["uploaded_file_list"].append(file_obj.name)                        
                             newly_uploaded.append(file_obj.name)                            
                             requests.get(f"{API_URL}/api/stats/{file_obj.name}")
                     except Exception as e:
@@ -82,18 +79,15 @@ with st.sidebar:
                     st.session_state['stats_data'] = s_res.json()
                 st.session_state['threats_list'] = [] 
                 st.rerun()
-                
-        # Hiển thị menu chức năng sau khi đã có file
+                                
         menu_options = ["🏠 Home", "📊 Dashboard", "🔍 Inspector", "🛡️ AI Monitor", "📜 History"]
-    
     else:
         st.info("Chưa có file nào. Hãy upload bên trên.")
         menu_options = ["🏠 Home", "📜 History"]
         
-    # --- MENU ĐIỀU HƯỚNG ---
     selected_view = st.radio("Chức năng:", menu_options)
 
-# 4. ROUTER VIEW
+#  ROUTER VIEW
 if selected_view == "🏠 Home":
     home.render_home_page()
 elif selected_view == "📊 Dashboard":

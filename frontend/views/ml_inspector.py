@@ -47,9 +47,7 @@ def render_security_monitor():
             "icon": "🚨", "title": f"CẢNH BÁO: {threat_count} Mối đe dọa",
             "desc": "Phát hiện hành vi bất thường vượt ngưỡng an toàn."
         }
-
     last_scan = st.session_state.get('last_scan_time', 'Chưa quét')
-
     st.markdown(f"""
         <div class="system-status-box" style="background-color: {status_props['bg']}; color: {status_props['color']}; border-color: {status_props['border']};">
             <div>
@@ -75,15 +73,12 @@ def render_security_monitor():
                     st.error(f"Lỗi Server: {res.text}")
             except Exception as e:
                 st.error(f"Không thể kết nối Backend: {e}")
-
     st.subheader(f"📋 Nhật ký Cảnh báo ({threat_count})")
-    
     if not threats:
         st.info("Hệ thống sạch.")
     else:
         if not st.session_state.get('stats_data'):
             try:
-                # Gọi API lấy thống kê ngầm để có dữ liệu lưu
                 s_res = requests.get(f"{API_URL}/api/stats/{filename}")
                 if s_res.status_code == 200:
                     st.session_state['stats_data'] = s_res.json()
@@ -113,7 +108,7 @@ def render_security_monitor():
         for col, h in zip(cols, headers):
             col.markdown(f"**{h}**")
         st.divider()
-        
+    
         for t in threats:
             c1, c2, c3, c4, c5 = st.columns([1.5, 2, 3, 2, 1.5])           
             with c1: 

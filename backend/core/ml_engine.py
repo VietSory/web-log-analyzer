@@ -64,7 +64,7 @@ class LogAnomalyDetector:
 
         features = df.copy()
 
-        # 1. Xử lý Thời gian (Hour)
+        # Xử lý Thời gian (Hour)
         if 'datetime' in features.columns:
             time_col = pd.to_datetime(features['datetime'], errors='coerce')
             features['hour'] = time_col.dt.hour.fillna(0).astype(int)
@@ -85,7 +85,7 @@ class LogAnomalyDetector:
             else:
                 features[col + '_enc'] = 0
 
-        # 3. Chuẩn bị Vector đầu vào
+        # Chuẩn bị Vector đầu vào
         features['status'] = pd.to_numeric(features['status'], errors='coerce').fillna(200)
         features['size'] = pd.to_numeric(features['size'], errors='coerce').fillna(0)
         feature_columns = [
