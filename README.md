@@ -53,6 +53,8 @@ web-log-analyzer/
 │   ├── uploads/              # Thư mục lưu trữ file tạm
 │   ├── database.py           # Quản lý SQLite (CRUD History)
 │   ├── main.py               # Entry point của Backend
+|   ├── requirements.txt      # Các thư viện phụ thuộc
+|   ├── train_model.py        # File để chạy train model AI tạo ra các file cần thiết
 │   └── weblog_analyzer.db    # SQLite Database
 ├── frontend/                 # Giao diện người dùng (Streamlit)
 │   ├── assets/               # Tài nguyên tĩnh (CSS, Images)
@@ -63,8 +65,9 @@ web-log-analyzer/
 │   │   ├── history.py        # Quản lý lịch sử báo cáo
 │   │   └── inspector.py      # Soi log thô
 │   ├── app.py                # Entry point của Frontend
+|   ├── requirements.txt      # Các thư viện phụ thuộc
 │   └── utils.py              # Hàm tiện ích chung
-├── requirements.txt          # Các thư viện phụ thuộc
+├── .gitignor                 # Bỏ qua các file dev không muốn up lên git
 └── README.md                 # Tài liệu hướng dẫn
 ```
 ## 🛠 Cài đặt & Khởi chạy
@@ -76,8 +79,15 @@ Thư viện: Cài đặt theo file requirements.txt.
 ```bash
 pip install -r requirements.txt
 ```
+**2. Khởi chạy các file model cần thiết**
+Mở terminal tại thư mục backend/:
 
-**2. Khởi chạy Backend (API Server)**
+```bash
+cd backend
+python train_model.py
+```
+
+**3. Khởi chạy Backend (API Server)**
 Mở terminal tại thư mục backend/:
 
 ```bash
@@ -87,7 +97,7 @@ python main.py
 
 Server sẽ khởi động tại: http://127.0.0.1:8000 và tự động khởi tạo Database.
 
-**3. Khởi chạy Frontend (User Interface)**
+**4. Khởi chạy Frontend (User Interface)**
 Mở một terminal khác tại thư mục gốc dự án:
 
 ```bash
