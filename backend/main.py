@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, history,stats,upload
+from routers import analyze, history, stats, upload, handle_logs
 from database import init_db
 
 @asynccontextmanager
@@ -27,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(analyze.router ,prefix="/api", tags=["Analysis"])
+app.include_router(handle_logs.router ,prefix="/api", tags=["Analysis"])
 app.include_router(history.router ,prefix="/api/history", tags=["History"])
 app.include_router(stats.router ,prefix="/api", tags=["Stats"])
 app.include_router(upload.router ,prefix="/api", tags=["Upload"])
