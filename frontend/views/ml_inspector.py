@@ -90,7 +90,8 @@ def render_security_monitor():
                     payload = {
                         "filename": filename,
                         "stats": st.session_state['stats_data'],
-                        "threats": threats
+                        "threats": threats,
+                        "owner_id": st.session_state.get("user_id")
                     }
                     with st.spinner("Đang lưu báo cáo..."):
                         try:

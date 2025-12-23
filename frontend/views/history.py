@@ -4,11 +4,18 @@ import pandas as pd
 import requests
 import time
 from utils import API_URL, load_custom_css
+
 def render_history():
     load_custom_css()
     st.title("📜 Thư viện Báo cáo")
+    
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.error("❌ Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.")
+        return
+    
     try:
-        res = requests.get(f"{API_URL}/api/history")
+        res = requests.get(f"{API_URL}/api/history/list/{user_id}")
         history_data = res.json() if res.status_code == 200 else []
     except:
         st.error("🔌 Mất kết nối tới Backend.")
@@ -40,7 +47,7 @@ def render_history():
 
     df_hist = pd.DataFrame(history_data)
     df_hist['display_label'] = df_hist.apply(
-        lambda x: f"ID {x['id']} | {x['filename']} | {x['scan_date']}", axis=1
+        lambda x: f"{x['filename']} | {x['scan_date']} | ID: {x['id'][:8]}...", axis=1
     )
     with st.container():
         c_search, c_stats = st.columns([3, 1])
@@ -56,7 +63,7 @@ def render_history():
         df_filtered = df_hist[
             df_hist['filename'].str.contains(search_query, case=False) | 
             df_hist['scan_date'].str.contains(search_query, case=False) |
-            df_hist['id'].astype(str).str.contains(search_query)
+            df_hist['id'].astype(str).str.contains(search_query, case=False)
         ]
     else:
         df_filtered = df_hist
@@ -65,7 +72,7 @@ def render_history():
         st.dataframe(
             df_filtered,
             column_config={
-                "id": st.column_config.NumberColumn("ID", width="small"),
+                "id": st.column_config.TextColumn("ID", width="medium"),
                 "filename": st.column_config.TextColumn("Tên File", width="medium"),
                 "scan_date": st.column_config.TextColumn("Thời gian lưu", width="medium"),
                 "total_requests": st.column_config.NumberColumn("Reqs", help="Tổng số request"),
@@ -89,7 +96,8 @@ def render_history():
                 index=0,
                 label_visibility="collapsed"
             )
-            selected_id = int(selected_label.split("|")[0].replace("ID", "").strip())
+            # Extract ID from label - UUID is after "ID: " and before "..."
+            selected_id = df_filtered[df_filtered['display_label'] == selected_label]['id'].iloc[0]
         with c_btn_view:
             btn_view = st.button("📂 Xem Chi tiết", type="primary", use_container_width=True)
         with c_btn_del:
@@ -97,7 +105,7 @@ def render_history():
                 try:
                     res = requests.delete(f"{API_URL}/api/history/{selected_id}")
                     if res.status_code == 200:
-                        st.toast(f"✅ Đã xóa báo cáo ID {selected_id}", icon="🗑️")
+                        st.toast(f"✅ Đã xóa báo cáo", icon="🗑️")
                         time.sleep(1)
                         st.rerun()
                     else:
@@ -107,7 +115,7 @@ def render_history():
         if btn_view:
             with st.spinner("Đang tải dữ liệu báo cáo..."):
                 try:
-                    res_det = requests.get(f"{API_URL}/api/history/{selected_id}")
+                    res_det = requests.get(f"{API_URL}/api/history/detail/{selected_id}")
                     if res_det.status_code == 200:
                         detail = res_det.json()
                         render_report_detail(detail)

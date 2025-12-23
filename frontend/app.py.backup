@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import time
 from utils import init_session_state, load_custom_css, API_URL
-from views import home, dashboard, inspector, ml_inspector, history, auth, servers, server_detail
+from views import home, dashboard, inspector, ml_inspector, history, auth, servers
 
 st.set_page_config(
     page_title="Data Analyzer",
@@ -15,11 +15,10 @@ init_session_state()
 load_custom_css()
 
 # ========== AUTHENTICATION CHECK ==========
-# Khởi tạo authenticated chỉ một lần, không bao giờ reset
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-if not st.session_state.get("authenticated", False):
+if not st.session_state["authenticated"]:
     # Nếu chưa đăng nhập, chỉ hiển thị trang login
     auth.render_auth_page()
     st.stop()
@@ -100,7 +99,7 @@ with st.sidebar:
                 st.session_state['threats_list'] = [] 
                 st.rerun()
                                 
-        menu_options = ["🏠 Home", "📊 Dashboard", "🔍 Inspector", "🛡️ AI Monitor", "🖥️ Servers", "📜 History"]
+        menu_options = ["🏠 Home", "📊 Dashboard", "🔍 Inspector", "🛡️ AI Monitor", "�️ Servers", "📜 History"]
     else:
         st.info("Chưa có file nào. Hãy upload bên trên.")
         menu_options = ["🏠 Home", "🖥️ Servers", "📜 History"]
@@ -108,10 +107,7 @@ with st.sidebar:
     selected_view = st.radio("Chức năng:", menu_options)
 
 #  ROUTER VIEW
-# Check if we need to show server detail page
-if st.session_state.get("current_view") == "📊 Chi Tiết Server":
-    server_detail.render_server_detail_page()
-elif selected_view == "🏠 Home":
+if selected_view == "🏠 Home":
     home.render_home_page()
 elif selected_view == "📊 Dashboard":
     dashboard.render_dashboard()
@@ -119,7 +115,7 @@ elif selected_view == "🔍 Inspector":
     inspector.render_inspector()
 elif selected_view == "🛡️ AI Monitor":
     ml_inspector.render_security_monitor()
-elif selected_view == "🖥️ Servers":
+elif selected_view == "�️ Servers":
     servers.render_servers_page()
-elif selected_view == "📜 History":
+elif selected_view == "�📜 History":
     history.render_history()

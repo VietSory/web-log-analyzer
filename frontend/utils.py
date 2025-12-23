@@ -4,12 +4,15 @@ API_URL = "http://127.0.0.1:8000"
 
 def init_session_state():
     """Khởi tạo các biến toàn cục cho phiên làm việc"""
+    # Khởi tạo các giá trị chỉ nếu chúng chưa tồn tại (không reset)
+    # Lưu ý: authenticated, username, user_id được xử lý riêng ở app.py
     defaults = {
         "current_filename": None,
         "last_uploaded_filename": None,
         "analysis_data": None,
         "last_scan_time": "Chưa quét",
-        "threats_list": []
+        "threats_list": [],
+        "current_view": None
     }
     for key, value in defaults.items():
         if key not in st.session_state:
