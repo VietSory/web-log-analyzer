@@ -65,7 +65,7 @@ web-log-analyzer/
 │   ├── app.py                # Entry point của Frontend
 |   ├── requirements.txt      # Các thư viện phụ thuộc
 │   └── utils.py              # Hàm tiện ích chung
-├── .gitignor                 # Bỏ qua các file dev không muốn up lên git
+├── .gitignore                 # Bỏ qua các file dev không muốn up lên git
 └── README.md                 # Tài liệu hướng dẫn
 ```
 ## 🛠 Cài đặt & Khởi chạy
