@@ -7,8 +7,10 @@ import uuid
 DB_NAME = "weblog_analyzer.db"
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10.0)  # Thêm timeout
     conn.row_factory = sqlite3.Row
+    # Cấu hình WAL mode để tránh lock
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def generate_uuid():
@@ -105,6 +107,38 @@ def init_db():
     conn.commit()
     conn.close()
     
+    # Seed admin user
+    seed_admin_user()
+
+    
+def seed_admin_user():
+    """Create default admin user if not exists"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if admin already exists
+    cursor.execute('SELECT id FROM users WHERE username = ?', ('admin',))
+    if cursor.fetchone():
+        conn.close()
+        return None
+    
+    admin_id = generate_uuid()
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        cursor.execute('''
+            INSERT INTO users (id, fullname, username, password, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (admin_id, 'Admin User', 'admin', 'admin', created_at))
+        conn.commit()
+        print(f"✅ Admin user created with ID: {admin_id}")
+        return admin_id
+    except Exception as e:
+        print(f"⚠️ Could not create admin user: {e}")
+        return None
+    finally:
+        conn.close()
+    
 def save_manual_report(filename, stats, threats, owner_id=None):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -149,24 +183,28 @@ def save_manual_report(filename, stats, threats, owner_id=None):
     conn.close()
     return history_id
 
-def get_all_history():
+def get_all_history(owner_id=None):
     conn = get_db_connection()
-    history = conn.execute('SELECT id, filename, scan_date, total_requests, error_rate FROM scan_history ORDER BY id DESC').fetchall()
-    conn.close()
-    return [dict(row) for row in history]
+    try:
+        history = conn.execute('SELECT id, filename, scan_date, total_requests, error_rate FROM scan_history WHERE owner_id = ? ORDER BY id DESC',(owner_id,)).fetchall()
+        return [dict(row) for row in history]
+    finally:
+        conn.close()
 
 def get_scan_details(history_id):
     conn = get_db_connection()
-    history = conn.execute('SELECT * FROM scan_history WHERE id = ?', (history_id,)).fetchone()
-    threats = conn.execute('SELECT * FROM scan_threats WHERE history_id = ?', (history_id,)).fetchall()
-    conn.close()
-    if history:
-        history_dict = dict(history)
-        history_dict['traffic_data'] = json.loads(history_dict['traffic_data']) if history_dict['traffic_data'] else {}
-        history_dict['status_data'] = json.loads(history_dict['status_data']) if history_dict['status_data'] else {}
-        history_dict['threats'] = [dict(row) for row in threats]
-        return history_dict
-    return None
+    try:
+        history = conn.execute('SELECT * FROM scan_history WHERE id = ?', (history_id,)).fetchone()
+        threats = conn.execute('SELECT * FROM scan_threats WHERE history_id = ?', (history_id,)).fetchall()
+        if history:
+            history_dict = dict(history)
+            history_dict['traffic_data'] = json.loads(history_dict['traffic_data']) if history_dict['traffic_data'] else {}
+            history_dict['status_data'] = json.loads(history_dict['status_data']) if history_dict['status_data'] else {}
+            history_dict['threats'] = [dict(row) for row in threats]
+            return history_dict
+        return None
+    finally:
+        conn.close()
 
 def delete_scan_history(history_id):
     conn = get_db_connection()
@@ -225,16 +263,45 @@ def create_user(fullname, username, password):
 def get_user_by_username(username):
     """Get user by username"""
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-    conn.close()
-    return dict(user) if user else None
+    try:
+        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        return dict(user) if user else None
+    finally:
+        conn.close()
 
 def get_user_by_id(user_id):
     """Get user by ID"""
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    conn.close()
-    return dict(user) if user else None
+    try:
+        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        return dict(user) if user else None
+    finally:
+        conn.close()
+
+def set_user_by_username_password(username, password):
+    """Update user password by username"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE users SET password = ? WHERE username = ?
+        ''', (password, username))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_user_by_username_password(username, password):
+    """Get user by username and password"""
+    conn = get_db_connection()
+    try:
+        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
+        return dict(user) if user else None
+    finally:
+        conn.close()
 
 
 # ==================== SERVER FUNCTIONS ====================
@@ -245,27 +312,33 @@ def create_server(owner_id, name, ipv4=None):
     cursor = conn.cursor()
     server_id = generate_uuid()
     
-    cursor.execute('''
-        INSERT INTO servers (id, owner_id, name, ipv4)
-        VALUES (?, ?, ?, ?)
-    ''', (server_id, owner_id, name, ipv4))
-    conn.commit()
-    conn.close()
-    return server_id
+    try:
+        cursor.execute('''
+            INSERT INTO servers (id, owner_id, name, ipv4)
+            VALUES (?, ?, ?, ?)
+        ''', (server_id, owner_id, name, ipv4))
+        conn.commit()
+        return server_id
+    finally:
+        conn.close()
 
 def get_user_servers(owner_id):
     """Get all servers for a user"""
     conn = get_db_connection()
-    servers = conn.execute('SELECT * FROM servers WHERE owner_id = ?', (owner_id,)).fetchall()
-    conn.close()
-    return [dict(row) for row in servers]
+    try:
+        servers = conn.execute('SELECT * FROM servers WHERE owner_id = ?', (owner_id,)).fetchall()
+        return [dict(row) for row in servers]
+    finally:
+        conn.close()
 
 def get_server_by_id(server_id):
     """Get server by ID"""
     conn = get_db_connection()
-    server = conn.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()
-    conn.close()
-    return dict(server) if server else None
+    try:
+        server = conn.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()
+        return dict(server) if server else None
+    finally:
+        conn.close()
 
 def delete_server(server_id):
     """Delete server and its associated logs"""
@@ -291,27 +364,33 @@ def create_log(server_id, status, contents):
     cursor = conn.cursor()
     log_id = generate_uuid()
     
-    cursor.execute('''
-        INSERT INTO logs (id, server_id, status, contents)
-        VALUES (?, ?, ?, ?)
-    ''', (log_id, server_id, status, contents))
-    conn.commit()
-    conn.close()
-    return log_id
+    try:
+        cursor.execute('''
+            INSERT INTO logs (id, server_id, status, contents)
+            VALUES (?, ?, ?, ?)
+        ''', (log_id, server_id, status, contents))
+        conn.commit()
+        return log_id
+    finally:
+        conn.close()
 
 def get_server_logs(server_id):
     """Get all logs for a server"""
     conn = get_db_connection()
-    logs = conn.execute('SELECT * FROM logs WHERE server_id = ?', (server_id,)).fetchall()
-    conn.close()
-    return [dict(row) for row in logs]
+    try:
+        logs = conn.execute('SELECT * FROM logs WHERE server_id = ?', (server_id,)).fetchall()
+        return [dict(row) for row in logs]
+    finally:
+        conn.close()
 
 def get_log_by_id(log_id):
     """Get log by ID"""
     conn = get_db_connection()
-    log = conn.execute('SELECT * FROM logs WHERE id = ?', (log_id,)).fetchone()
-    conn.close()
-    return dict(log) if log else None
+    try:
+        log = conn.execute('SELECT * FROM logs WHERE id = ?', (log_id,)).fetchone()
+        return dict(log) if log else None
+    finally:
+        conn.close()
 
 def delete_log(log_id):
     """Delete a log entry"""
