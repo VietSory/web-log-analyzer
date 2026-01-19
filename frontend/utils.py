@@ -2,21 +2,29 @@ import streamlit as st
 
 API_URL = "http://127.0.0.1:8000"
 
+
 def init_session_state():
     """Khởi tạo các biến toàn cục cho phiên làm việc"""
-    # Khởi tạo các giá trị chỉ nếu chúng chưa tồn tại (không reset)
-    # Lưu ý: authenticated, username, user_id được xử lý riêng ở app.py
     defaults = {
         "current_filename": None,
         "last_uploaded_filename": None,
         "analysis_data": None,
         "last_scan_time": "Chưa quét",
         "threats_list": [],
-        "current_view": None
+        "current_view": None,
+        "uploaded_file_labels": {},
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def get_display_filename(storage_name: str | None) -> str:
+    if not storage_name:
+        return "Unknown"
+    labels = st.session_state.get("uploaded_file_labels", {})
+    return labels.get(storage_name, storage_name)
+
 
 def load_custom_css():
     st.markdown("""
@@ -26,13 +34,13 @@ def load_custom_css():
                 padding-top: 2rem;
                 padding-bottom: 2rem;
             }
-            
+
             /* 2. Style cho các Card (Khung chứa thông tin) */
             .st-emotion-cache-1r6slb0, .st-emotion-cache-16txtl3 {
                 border-radius: 10px;
                 border: 1px solid #333;
                 background-color: #1e1e1e; /* Màu nền tối nhẹ */
-                padding: 15px;cl
+                padding: 15px;
             }
 
             /* 3. Status Banner đẹp hơn */

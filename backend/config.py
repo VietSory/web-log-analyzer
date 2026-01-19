@@ -1,7 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,13 @@ class Settings(BaseSettings):
     app_reload: bool = False
 
     database_path: str = "weblog_analyzer.db"
+
+    upload_dir: Path = Path("uploads")
+    upload_max_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1024,
+        le=100 * 1024 * 1024,
+    )
 
     cors_origins: list[str] = ["http://localhost:8501"]
     cors_allow_credentials: bool = True
