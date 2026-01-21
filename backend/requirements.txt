@@ -8,3 +8,4 @@ tensorflow
 joblib
 pydantic-settings
 python-dotenv
+argon2-cffi>=25.1,<26
