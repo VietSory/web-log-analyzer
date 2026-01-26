@@ -1,407 +1,614 @@
-import sqlite3
-import os
+from __future__ import annotations
+
 import json
-from datetime import datetime
-import uuid
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
-DB_NAME = "weblog_analyzer.db"
+from config import get_settings
+from core.security import hash_password
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_NAME, timeout=10.0)  # Thêm timeout
-    conn.row_factory = sqlite3.Row
-    # Cấu hình WAL mode để tránh lock
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
 
-def generate_uuid():
-    return str(uuid.uuid4())
+_DB_TIMEOUT_SECONDS = 10.0
+_SCHEMA_MIGRATIONS_TABLE = "schema_migrations"
 
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Create users table
-    cursor.execute('''
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _configured_database_path() -> str:
+    return get_settings().database_path
+
+
+def get_db_connection(database_path: str | Path | None = None) -> sqlite3.Connection:
+    path = str(database_path) if database_path is not None else _configured_database_path()
+
+    if path != ":memory:":
+        expanded_path = Path(path).expanduser()
+        expanded_path.parent.mkdir(parents=True, exist_ok=True)
+        path = str(expanded_path)
+
+    connection = sqlite3.connect(path, timeout=_DB_TIMEOUT_SECONDS)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
+    return connection
+
+
+def _create_current_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        f'''
+        CREATE TABLE IF NOT EXISTS {_SCHEMA_MIGRATIONS_TABLE} (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             fullname TEXT NOT NULL,
             username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
             created_at TEXT NOT NULL
-        )
-    ''')
-    
-    # Create servers table
-    cursor.execute('''
+        );
+
         CREATE TABLE IF NOT EXISTS servers (
             id TEXT PRIMARY KEY,
             owner_id TEXT NOT NULL,
             name TEXT NOT NULL,
             ipv4 TEXT,
-            FOREIGN KEY(owner_id) REFERENCES users(id)
-        )
-    ''')
-    
-    # Create logs table
-    cursor.execute('''
+            FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS logs (
             id TEXT PRIMARY KEY,
             server_id TEXT NOT NULL,
-            status TEXT,
-            contents TEXT,
-            FOREIGN KEY(server_id) REFERENCES servers(id)
-        )
-    ''')
-    
-    # Update/Create scan_history table with new schema
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS scan_history(
+            status TEXT NOT NULL,
+            contents TEXT NOT NULL,
+            FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS scan_history (
             id TEXT PRIMARY KEY,
             owner_id TEXT,
             filename TEXT NOT NULL,
-            scan_date TEXT,
-            total_requests INTEGER,
-            unique_ips INTEGER,
-            error_rate REAL,
-            traffic_data TEXT,
-            status_data TEXT,
-            FOREIGN KEY(owner_id) REFERENCES users(id)
-        )
-    ''')
-    
-    # Update/Create scan_threats table with new schema
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS scan_threats(
+            scan_date TEXT NOT NULL,
+            total_requests INTEGER NOT NULL,
+            unique_ips INTEGER NOT NULL,
+            error_rate REAL NOT NULL,
+            traffic_data TEXT NOT NULL,
+            status_data TEXT NOT NULL,
+            FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS scan_threats (
             id TEXT PRIMARY KEY,
-            history_id TEXT,
+            history_id TEXT NOT NULL,
             ip TEXT,
-            severity TEXT,
+            severity TEXT NOT NULL,
             time TEXT,
             details TEXT,
             reconstruction_error REAL,
-            FOREIGN KEY(history_id) REFERENCES scan_history(id)
-        )
-    ''')
-    
-    # Add missing columns to existing tables (if they don't exist)
-    try:
-        cursor.execute("ALTER TABLE scan_history ADD COLUMN owner_id TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    try:
-        cursor.execute("ALTER TABLE scan_history ADD COLUMN id TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    try:
-        cursor.execute("ALTER TABLE scan_threats ADD COLUMN id TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    try:
-        cursor.execute("ALTER TABLE scan_threats ADD COLUMN severity TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    
-    conn.commit()
-    conn.close()
-    
-    # Seed admin user
-    seed_admin_user()
+            FOREIGN KEY(history_id) REFERENCES scan_history(id) ON DELETE CASCADE
+        );
+        '''
+    )
 
-    
-def seed_admin_user():
-    """Create default admin user if not exists"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Check if admin already exists
-    cursor.execute('SELECT id FROM users WHERE username = ?', ('admin',))
-    if cursor.fetchone():
-        conn.close()
-        return None
-    
-    admin_id = generate_uuid()
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    try:
-        cursor.execute('''
-            INSERT INTO users (id, fullname, username, password, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (admin_id, 'Admin User', 'admin', 'admin', created_at))
-        conn.commit()
-        print(f"✅ Admin user created with ID: {admin_id}")
-        return admin_id
-    except Exception as e:
-        print(f"⚠️ Could not create admin user: {e}")
-        return None
-    finally:
-        conn.close()
-    
-def save_manual_report(filename, stats, threats, owner_id=None):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    history_id = generate_uuid()
-    scan_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    traffic_json = json.dumps(stats.get('traffic_chart', {}))
-    status_json = json.dumps(stats.get('status_distribution', {}))
-    
-    cursor.execute('''
-        INSERT INTO scan_history (id, owner_id, filename, scan_date, total_requests, unique_ips, error_rate, traffic_data, status_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (history_id,
-            owner_id,
-            filename, 
-            scan_date, 
-            stats['total_requests'], 
-            stats['unique_ips'], 
-            stats['error_rate'], 
-            traffic_json, 
-            status_json
-        ))
-    
-    if threats:
-        threat_data = []
-        for t in threats:
-            threat_data.append((
-                generate_uuid(),
+
+def _migration_applied(connection: sqlite3.Connection, version: int) -> bool:
+    row = connection.execute(
+        f"SELECT 1 FROM {_SCHEMA_MIGRATIONS_TABLE} WHERE version = ?",
+        (version,),
+    ).fetchone()
+    return row is not None
+
+
+def _record_migration(connection: sqlite3.Connection, version: int) -> None:
+    connection.execute(
+        f"INSERT INTO {_SCHEMA_MIGRATIONS_TABLE} (version, applied_at) VALUES (?, ?)",
+        (version, _utc_now()),
+    )
+
+
+def _migrate_legacy_password_storage(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(users)").fetchall()
+    }
+
+    if "password" in columns and "password_hash" not in columns:
+        connection.execute("ALTER TABLE users RENAME COLUMN password TO password_hash")
+        columns.remove("password")
+        columns.add("password_hash")
+
+    if "password_hash" not in columns:
+        raise RuntimeError("users table does not contain a password hash column")
+
+    rows = connection.execute(
+        "SELECT id, fullname, username, password_hash FROM users"
+    ).fetchall()
+
+    for row in rows:
+        stored_value = row["password_hash"]
+
+        if (
+            row["username"] == "admin"
+            and row["fullname"] == "Admin User"
+            and stored_value == "admin"
+        ):
+            connection.execute("DELETE FROM users WHERE id = ?", (row["id"],))
+            continue
+
+        if not stored_value.startswith("$argon2id$"):
+            connection.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(stored_value), row["id"]),
+            )
+
+
+def _table_rows(connection: sqlite3.Connection, table_name: str) -> list[dict]:
+    return [
+        dict(row)
+        for row in connection.execute(f"SELECT * FROM {table_name}").fetchall()
+    ]
+
+
+def _needs_scan_table_rebuild(connection: sqlite3.Connection) -> bool:
+    history_columns = {
+        row["name"]: (row["type"] or "").upper()
+        for row in connection.execute("PRAGMA table_info(scan_history)").fetchall()
+    }
+    threat_columns = {
+        row["name"]: (row["type"] or "").upper()
+        for row in connection.execute("PRAGMA table_info(scan_threats)").fetchall()
+    }
+
+    required_history = {
+        "id",
+        "owner_id",
+        "filename",
+        "scan_date",
+        "total_requests",
+        "unique_ips",
+        "error_rate",
+        "traffic_data",
+        "status_data",
+    }
+    required_threats = {
+        "id",
+        "history_id",
+        "ip",
+        "severity",
+        "time",
+        "details",
+        "reconstruction_error",
+    }
+
+    return (
+        not required_history.issubset(history_columns)
+        or not required_threats.issubset(threat_columns)
+        or history_columns.get("id") != "TEXT"
+        or threat_columns.get("id") != "TEXT"
+        or threat_columns.get("history_id") != "TEXT"
+    )
+
+
+def _migrate_legacy_scan_tables(connection: sqlite3.Connection) -> None:
+    if not _needs_scan_table_rebuild(connection):
+        return
+
+    old_history = _table_rows(connection, "scan_history")
+    old_threats = _table_rows(connection, "scan_threats")
+    valid_owner_ids = {
+        row["id"]
+        for row in connection.execute("SELECT id FROM users").fetchall()
+    }
+
+    connection.execute("DROP TABLE scan_threats")
+    connection.execute("DROP TABLE scan_history")
+    _create_current_schema(connection)
+
+    history_id_map: dict[object, str] = {}
+    for row in old_history:
+        new_id = generate_uuid()
+        history_id_map[row.get("id")] = new_id
+
+        owner_id = row.get("owner_id")
+        if owner_id not in valid_owner_ids:
+            owner_id = None
+
+        connection.execute(
+            """
+            INSERT INTO scan_history (
+                id,
+                owner_id,
+                filename,
+                scan_date,
+                total_requests,
+                unique_ips,
+                error_rate,
+                traffic_data,
+                status_data
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id,
+                owner_id,
+                str(row.get("filename") or "legacy.log"),
+                str(row.get("scan_date") or _utc_now()),
+                int(row.get("total_requests") or 0),
+                int(row.get("unique_ips") or 0),
+                float(row.get("error_rate") or 0.0),
+                str(row.get("traffic_data") or "{}"),
+                str(row.get("status_data") or "{}"),
+            ),
+        )
+
+    for row in old_threats:
+        new_history_id = history_id_map.get(row.get("history_id"))
+        if new_history_id is None:
+            continue
+
+        connection.execute(
+            """
+            INSERT INTO scan_threats (
+                id,
                 history_id,
-                t['ip'],
-                t.get('severity', t.get('severity', 'unknown')),
-                t['time'],
-                t['details'],
-                t['reconstruction_error']
-            ))
-        cursor.executemany('''
-            INSERT INTO scan_threats (id, history_id, ip, severity, time, details, reconstruction_error)
+                ip,
+                severity,
+                time,
+                details,
+                reconstruction_error
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', threat_data)
-    
-    conn.commit()
-    conn.close()
+            """,
+            (
+                generate_uuid(),
+                new_history_id,
+                row.get("ip"),
+                str(row.get("severity") or "unknown"),
+                row.get("time"),
+                row.get("details"),
+                row.get("reconstruction_error"),
+            ),
+        )
+
+
+def _create_indexes(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        '''
+        CREATE INDEX IF NOT EXISTS idx_servers_owner_id
+            ON servers(owner_id);
+        CREATE INDEX IF NOT EXISTS idx_logs_server_id
+            ON logs(server_id);
+        CREATE INDEX IF NOT EXISTS idx_scan_history_owner_date
+            ON scan_history(owner_id, scan_date DESC);
+        CREATE INDEX IF NOT EXISTS idx_scan_threats_history_id
+            ON scan_threats(history_id);
+        '''
+    )
+
+
+def init_db(database_path: str | Path | None = None) -> None:
+    connection = get_db_connection(database_path)
+    try:
+        effective_path = str(database_path) if database_path is not None else _configured_database_path()
+        if effective_path != ":memory:":
+            journal_mode = connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+            if str(journal_mode).lower() != "wal":
+                raise RuntimeError("SQLite WAL mode could not be enabled")
+
+        with connection:
+            _create_current_schema(connection)
+
+            if not _migration_applied(connection, 1):
+                _migrate_legacy_password_storage(connection)
+                _record_migration(connection, 1)
+
+            if not _migration_applied(connection, 2):
+                _migrate_legacy_scan_tables(connection)
+                _record_migration(connection, 2)
+
+            if not _migration_applied(connection, 3):
+                _create_indexes(connection)
+                _record_migration(connection, 3)
+    finally:
+        connection.close()
+
+
+def generate_uuid() -> str:
+    return str(uuid4())
+
+
+def save_manual_report(filename, stats, threats, owner_id=None):
+    connection = get_db_connection()
+    history_id = generate_uuid()
+
+    try:
+        with connection:
+            connection.execute(
+                '''
+                INSERT INTO scan_history (
+                    id, owner_id, filename, scan_date, total_requests,
+                    unique_ips, error_rate, traffic_data, status_data
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    history_id,
+                    owner_id,
+                    filename,
+                    _utc_now(),
+                    stats["total_requests"],
+                    stats["unique_ips"],
+                    stats["error_rate"],
+                    json.dumps(stats.get("traffic_chart", {})),
+                    json.dumps(stats.get("status_distribution", {})),
+                ),
+            )
+
+            if threats:
+                connection.executemany(
+                    '''
+                    INSERT INTO scan_threats (
+                        id, history_id, ip, severity, time, details,
+                        reconstruction_error
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    [
+                        (
+                            generate_uuid(),
+                            history_id,
+                            threat.get("ip"),
+                            threat.get("severity", "unknown"),
+                            threat.get("time"),
+                            threat.get("details"),
+                            threat.get("reconstruction_error"),
+                        )
+                        for threat in threats
+                    ],
+                )
+    finally:
+        connection.close()
+
     return history_id
 
+
 def get_all_history(owner_id=None):
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        history = conn.execute('SELECT id, filename, scan_date, total_requests, error_rate FROM scan_history WHERE owner_id = ? ORDER BY id DESC',(owner_id,)).fetchall()
-        return [dict(row) for row in history]
+        rows = connection.execute(
+            '''
+            SELECT id, filename, scan_date, total_requests, error_rate
+            FROM scan_history
+            WHERE owner_id = ?
+            ORDER BY scan_date DESC, id DESC
+            ''',
+            (owner_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_scan_details(history_id):
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        history = conn.execute('SELECT * FROM scan_history WHERE id = ?', (history_id,)).fetchone()
-        threats = conn.execute('SELECT * FROM scan_threats WHERE history_id = ?', (history_id,)).fetchall()
-        if history:
-            history_dict = dict(history)
-            history_dict['traffic_data'] = json.loads(history_dict['traffic_data']) if history_dict['traffic_data'] else {}
-            history_dict['status_data'] = json.loads(history_dict['status_data']) if history_dict['status_data'] else {}
-            history_dict['threats'] = [dict(row) for row in threats]
-            return history_dict
-        return None
+        history = connection.execute(
+            "SELECT * FROM scan_history WHERE id = ?",
+            (history_id,),
+        ).fetchone()
+        if history is None:
+            return None
+
+        threats = connection.execute(
+            "SELECT * FROM scan_threats WHERE history_id = ?",
+            (history_id,),
+        ).fetchall()
+
+        result = dict(history)
+        result["traffic_data"] = json.loads(result["traffic_data"] or "{}")
+        result["status_data"] = json.loads(result["status_data"] or "{}")
+        result["threats"] = [dict(row) for row in threats]
+        return result
     finally:
-        conn.close()
+        connection.close()
+
 
 def delete_scan_history(history_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     try:
-        cursor.execute("DELETE FROM scan_threats WHERE history_id = ?", (history_id,))        
-        cursor.execute("DELETE FROM scan_history WHERE id = ?", (history_id,))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"Error deleting history: {e}")
-        return False
+        with connection:
+            connection.execute(
+                "DELETE FROM scan_threats WHERE history_id = ?",
+                (history_id,),
+            )
+            cursor = connection.execute(
+                "DELETE FROM scan_history WHERE id = ?",
+                (history_id,),
+            )
+        return cursor.rowcount > 0
     finally:
-        conn.close()
-        
+        connection.close()
+
+
 def clear_all_data():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     try:
-        cursor.execute("DELETE FROM scan_threats")
-        cursor.execute("DELETE FROM scan_history")
-        cursor.execute("DELETE FROM logs")
-        cursor.execute("DELETE FROM servers")
-        cursor.execute("DELETE FROM users")
-        
-        conn.commit()
+        with connection:
+            connection.execute("DELETE FROM scan_threats")
+            connection.execute("DELETE FROM scan_history")
+            connection.execute("DELETE FROM logs")
+            connection.execute("DELETE FROM servers")
+            connection.execute("DELETE FROM users")
         return True
-    except Exception as e:
-        print(f"Error clearing data: {e}")
-        return False
     finally:
-        conn.close()
+        connection.close()
 
 
-# ==================== USER FUNCTIONS ====================
-
-def create_user(fullname, username, password):
-    """Create a new user"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+def create_user(fullname, username, password_hash):
+    connection = get_db_connection()
     user_id = generate_uuid()
-    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
     try:
-        cursor.execute('''
-            INSERT INTO users (id, fullname, username, password, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, fullname, username, password, created_at))
-        conn.commit()
+        with connection:
+            connection.execute(
+                '''
+                INSERT INTO users (id, fullname, username, password_hash, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ''',
+                (user_id, fullname, username, password_hash, _utc_now()),
+            )
         return user_id
     except sqlite3.IntegrityError:
-        return None  # Username already exists
+        return None
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_user_by_username(username):
-    """Get user by username"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        user = connection.execute(
+            "SELECT * FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
         return dict(user) if user else None
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_user_by_id(user_id):
-    """Get user by ID"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = connection.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
         return dict(user) if user else None
     finally:
-        conn.close()
+        connection.close()
 
-def set_user_by_username_password(username, password):
-    """Update user password by username"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+
+def set_user_password_hash(username, password_hash):
+    connection = get_db_connection()
     try:
-        cursor.execute('''
-            UPDATE users SET password = ? WHERE username = ?
-        ''', (password, username))
-        conn.commit()
+        with connection:
+            cursor = connection.execute(
+                "UPDATE users SET password_hash = ? WHERE username = ?",
+                (password_hash, username),
+            )
         return cursor.rowcount > 0
-    except Exception as e:
-        print(f"Error updating password: {e}")
-        return False
     finally:
-        conn.close()
+        connection.close()
 
-def get_user_by_username_password(username, password):
-    """Get user by username and password"""
-    conn = get_db_connection()
-    try:
-        user = conn.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, password)).fetchone()
-        return dict(user) if user else None
-    finally:
-        conn.close()
-
-
-# ==================== SERVER FUNCTIONS ====================
 
 def create_server(owner_id, name, ipv4=None):
-    """Create a new server"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     server_id = generate_uuid()
-    
     try:
-        cursor.execute('''
-            INSERT INTO servers (id, owner_id, name, ipv4)
-            VALUES (?, ?, ?, ?)
-        ''', (server_id, owner_id, name, ipv4))
-        conn.commit()
+        with connection:
+            connection.execute(
+                '''
+                INSERT INTO servers (id, owner_id, name, ipv4)
+                VALUES (?, ?, ?, ?)
+                ''',
+                (server_id, owner_id, name, ipv4),
+            )
         return server_id
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_user_servers(owner_id):
-    """Get all servers for a user"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        servers = conn.execute('SELECT * FROM servers WHERE owner_id = ?', (owner_id,)).fetchall()
-        return [dict(row) for row in servers]
+        rows = connection.execute(
+            "SELECT * FROM servers WHERE owner_id = ? ORDER BY name, id",
+            (owner_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_server_by_id(server_id):
-    """Get server by ID"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        server = conn.execute('SELECT * FROM servers WHERE id = ?', (server_id,)).fetchone()
-        return dict(server) if server else None
+        row = connection.execute(
+            "SELECT * FROM servers WHERE id = ?",
+            (server_id,),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
-        conn.close()
+        connection.close()
+
 
 def delete_server(server_id):
-    """Delete server and its associated logs"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     try:
-        cursor.execute("DELETE FROM logs WHERE server_id = ?", (server_id,))
-        cursor.execute("DELETE FROM servers WHERE id = ?", (server_id,))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"Error deleting server: {e}")
-        return False
+        with connection:
+            connection.execute("DELETE FROM logs WHERE server_id = ?", (server_id,))
+            cursor = connection.execute(
+                "DELETE FROM servers WHERE id = ?",
+                (server_id,),
+            )
+        return cursor.rowcount > 0
     finally:
-        conn.close()
+        connection.close()
 
-
-# ==================== LOG FUNCTIONS ====================
 
 def create_log(server_id, status, contents):
-    """Create a new log entry"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     log_id = generate_uuid()
-    
     try:
-        cursor.execute('''
-            INSERT INTO logs (id, server_id, status, contents)
-            VALUES (?, ?, ?, ?)
-        ''', (log_id, server_id, status, contents))
-        conn.commit()
+        with connection:
+            connection.execute(
+                '''
+                INSERT INTO logs (id, server_id, status, contents)
+                VALUES (?, ?, ?, ?)
+                ''',
+                (log_id, server_id, status, contents),
+            )
         return log_id
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_server_logs(server_id):
-    """Get all logs for a server"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        logs = conn.execute('SELECT * FROM logs WHERE server_id = ?', (server_id,)).fetchall()
-        return [dict(row) for row in logs]
+        rows = connection.execute(
+            "SELECT * FROM logs WHERE server_id = ? ORDER BY rowid DESC",
+            (server_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
     finally:
-        conn.close()
+        connection.close()
+
 
 def get_log_by_id(log_id):
-    """Get log by ID"""
-    conn = get_db_connection()
+    connection = get_db_connection()
     try:
-        log = conn.execute('SELECT * FROM logs WHERE id = ?', (log_id,)).fetchone()
-        return dict(log) if log else None
+        row = connection.execute(
+            "SELECT * FROM logs WHERE id = ?",
+            (log_id,),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
-        conn.close()
+        connection.close()
+
 
 def delete_log(log_id):
-    """Delete a log entry"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    connection = get_db_connection()
     try:
-        cursor.execute("DELETE FROM logs WHERE id = ?", (log_id,))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"Error deleting log: {e}")
-        return False
+        with connection:
+            cursor = connection.execute(
+                "DELETE FROM logs WHERE id = ?",
+                (log_id,),
+            )
+        return cursor.rowcount > 0
     finally:
-        conn.close()
+        connection.close()
