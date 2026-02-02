@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from core.auth import create_access_token
 from core.security import hash_password, password_hash_needs_rehash, verify_password
 from database import create_user, get_user_by_username, set_user_password_hash
 
@@ -19,23 +20,31 @@ class RegisterRequest(BaseModel):
     fullname: str | None = Field(default=None, max_length=120)
 
 
-@router.post("/auth/login")
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
+    username: str
+
+
+@router.post("/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
     user = get_user_by_username(request.username)
     if not user or not verify_password(request.password, user["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if password_hash_needs_rehash(user["password_hash"]):
         set_user_password_hash(request.username, hash_password(request.password))
 
-    return {
-        "message": "Login successful",
-        "user_id": user["id"],
-        "username": user["username"],
-    }
+    return LoginResponse(
+        access_token=create_access_token(user["id"]),
+        user_id=user["id"],
+        username=user["username"],
+    )
 
 
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
