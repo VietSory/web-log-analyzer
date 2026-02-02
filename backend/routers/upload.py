@@ -1,6 +1,9 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from config import get_settings
+from core.auth import get_current_user
 from core.upload_storage import (
     BinaryUploadError,
     InvalidUploadNameError,
@@ -12,10 +15,14 @@ from core.upload_storage import (
 
 router = APIRouter()
 settings = get_settings()
+CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    _current_user: CurrentUser,
+    file: UploadFile = File(...),
+):
     try:
         stored = await save_upload(
             file,
