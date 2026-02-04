@@ -1,52 +1,77 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from database import clear_all_data, save_manual_report, get_all_history, get_scan_details, delete_scan_history
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from core.auth import get_current_user
+from database import (
+    delete_scan_history,
+    get_all_history,
+    get_scan_details,
+    save_manual_report,
+)
+
 
 router = APIRouter()
+CurrentUser = Annotated[dict, Depends(get_current_user)]
+
 
 class SavePayload(BaseModel):
-    filename: str
-    stats: Dict[str, Any]
-    threats: List[Dict[str, Any]]
-    owner_id: str = None  # Optional owner_id
+    filename: str = Field(min_length=1, max_length=255)
+    stats: dict[str, Any]
+    threats: list[dict[str, Any]] = Field(default_factory=list)
 
-@router.get("/list/{owner_id}")
-def get_history_list(owner_id: str):
-    try:
-        return get_all_history(owner_id=owner_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+def _owned_history(history_id: str, current_user: dict) -> dict:
+    details = get_scan_details(history_id)
+    if not details or details.get("owner_id") != current_user["id"]:
+        raise HTTPException(status_code=404, detail="History not found")
+    return details
+
+
+@router.get("/list")
+def get_history_list(current_user: CurrentUser):
+    return get_all_history(owner_id=current_user["id"])
+
 
 @router.get("/detail/{history_id}")
-def get_history_detail(history_id: str):
-    try:
-        details = get_scan_details(history_id)
-        if not details:
-            raise HTTPException(status_code=404, detail="History not found")
-        return details
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_history_detail(history_id: str, current_user: CurrentUser):
+    return _owned_history(history_id, current_user)
 
-@router.post("/save")
-def save_history(payload: SavePayload):
+
+@router.post("/save", status_code=status.HTTP_201_CREATED)
+def save_history(payload: SavePayload, current_user: CurrentUser):
     try:
-        history_id = save_manual_report(payload.filename, payload.stats, payload.threats, payload.owner_id)
-        return {"status": "success", "history_id": history_id, "id": history_id}
-    except Exception as e:
-        print(f"Error saving history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        history_id = save_manual_report(
+            payload.filename,
+            payload.stats,
+            payload.threats,
+            current_user["id"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid report payload") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Could not save report") from exc
+
+    return {"status": "success", "history_id": history_id, "id": history_id}
+
 
 @router.delete("/clear-all")
-def clear_all_endpoint():
-    success = clear_all_data()
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to clear data")
-    return {"status": "success", "message": "All data cleared and IDs reset"}
+def clear_history(current_user: CurrentUser):
+    records = get_all_history(owner_id=current_user["id"])
+    deleted = 0
+    for record in records:
+        if delete_scan_history(record["id"]):
+            deleted += 1
+
+    return {"status": "success", "deleted": deleted}
+
 
 @router.delete("/{history_id}")
-def delete_history_endpoint(history_id: str):
-    success = delete_scan_history(history_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to delete record")
+def delete_history_endpoint(history_id: str, current_user: CurrentUser):
+    _owned_history(history_id, current_user)
+    if not delete_scan_history(history_id):
+        raise HTTPException(status_code=404, detail="History not found")
     return {"status": "success", "deleted_id": history_id}
