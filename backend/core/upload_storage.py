@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 
 ALLOWED_LOG_EXTENSIONS = frozenset({".log", ".txt"})
@@ -18,6 +18,10 @@ class UploadValidationError(ValueError):
 
 
 class InvalidUploadNameError(UploadValidationError):
+    pass
+
+
+class InvalidUploadOwnerError(UploadValidationError):
     pass
 
 
@@ -72,13 +76,30 @@ def _validate_original_filename(filename: str | None) -> tuple[str, str]:
     return name, extension
 
 
-def resolve_upload_path(storage_name: str, upload_dir: str | Path) -> Path:
+def _owner_directory(upload_dir: str | Path, owner_id: str) -> Path:
+    try:
+        canonical_owner = str(UUID(owner_id))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise InvalidUploadOwnerError("Invalid upload owner") from exc
+
+    root = Path(upload_dir).expanduser().resolve()
+    owner_root = (root / canonical_owner).resolve()
+    if owner_root.parent != root:
+        raise InvalidUploadOwnerError("Invalid upload owner path")
+    return owner_root
+
+
+def resolve_upload_path(
+    storage_name: str,
+    upload_dir: str | Path,
+    owner_id: str,
+) -> Path:
     if _STORAGE_NAME_PATTERN.fullmatch(storage_name) is None:
         raise InvalidUploadNameError("Invalid stored upload name")
 
-    root = Path(upload_dir).resolve()
-    candidate = (root / storage_name).resolve()
-    if candidate.parent != root:
+    owner_root = _owner_directory(upload_dir, owner_id)
+    candidate = (owner_root / storage_name).resolve()
+    if candidate.parent != owner_root:
         raise InvalidUploadNameError("Invalid stored upload path")
 
     return candidate
@@ -88,19 +109,21 @@ async def save_upload(
     upload: UploadStream,
     upload_dir: str | Path,
     max_bytes: int,
+    owner_id: str,
 ) -> StoredUpload:
     if max_bytes <= 0:
         raise ValueError("max_bytes must be positive")
 
     original_filename, extension = _validate_original_filename(upload.filename)
+    owner_root = _owner_directory(upload_dir, owner_id)
+
     if upload.size is not None and upload.size > max_bytes:
+        await upload.close()
         raise UploadTooLargeError("Upload exceeds the configured size limit")
 
-    root = Path(upload_dir)
-    root.mkdir(parents=True, exist_ok=True)
-
+    owner_root.mkdir(parents=True, exist_ok=True)
     storage_name = f"{uuid4().hex}{extension}"
-    target = resolve_upload_path(storage_name, root)
+    target = resolve_upload_path(storage_name, upload_dir, owner_id)
     total_bytes = 0
 
     try:

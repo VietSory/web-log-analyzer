@@ -7,6 +7,7 @@ from core.auth import get_current_user
 from core.upload_storage import (
     BinaryUploadError,
     InvalidUploadNameError,
+    InvalidUploadOwnerError,
     UnsupportedUploadTypeError,
     UploadTooLargeError,
     save_upload,
@@ -20,7 +21,7 @@ CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 @router.post("/upload")
 async def upload_file(
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     file: UploadFile = File(...),
 ):
     try:
@@ -28,8 +29,9 @@ async def upload_file(
             file,
             upload_dir=settings.upload_dir,
             max_bytes=settings.upload_max_bytes,
+            owner_id=current_user["id"],
         )
-    except InvalidUploadNameError as exc:
+    except (InvalidUploadNameError, InvalidUploadOwnerError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except UploadTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc

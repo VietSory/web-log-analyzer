@@ -13,9 +13,9 @@ settings = get_settings()
 CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 
-def _get_uploaded_file(filename: str) -> Path:
+def _get_uploaded_file(filename: str, owner_id: str) -> Path:
     try:
-        file_path = resolve_upload_path(filename, settings.upload_dir)
+        file_path = resolve_upload_path(filename, settings.upload_dir, owner_id)
     except UploadValidationError as exc:
         raise HTTPException(status_code=404, detail="File not found") from exc
     if not file_path.is_file():
@@ -24,8 +24,8 @@ def _get_uploaded_file(filename: str) -> Path:
 
 
 @router.get("/stats/{filename}")
-def get_stats(filename: str, _current_user: CurrentUser):
-    dataframe = parse_log_file(_get_uploaded_file(filename))
+def get_stats(filename: str, current_user: CurrentUser):
+    dataframe = parse_log_file(_get_uploaded_file(filename, current_user["id"]))
     if dataframe.empty:
         return {"error": "No data parsed"}
 
@@ -57,8 +57,8 @@ def get_stats(filename: str, _current_user: CurrentUser):
 
 
 @router.get("/logs/{filename}")
-def get_logs(filename: str, _current_user: CurrentUser):
-    dataframe = parse_log_file(_get_uploaded_file(filename))
+def get_logs(filename: str, current_user: CurrentUser):
+    dataframe = parse_log_file(_get_uploaded_file(filename, current_user["id"]))
     if dataframe.empty:
         return []
     response_frame = dataframe.head(10000).copy()
