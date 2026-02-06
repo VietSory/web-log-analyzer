@@ -22,9 +22,9 @@ except Exception as exc:
     print(f"⚠️ Warning: Could not load AI model: {exc}")
 
 
-def _get_uploaded_file(filename: str) -> Path:
+def _get_uploaded_file(filename: str, owner_id: str) -> Path:
     try:
-        file_path = resolve_upload_path(filename, settings.upload_dir)
+        file_path = resolve_upload_path(filename, settings.upload_dir, owner_id)
     except UploadValidationError as exc:
         raise HTTPException(status_code=404, detail="File not found") from exc
 
@@ -35,8 +35,8 @@ def _get_uploaded_file(filename: str) -> Path:
 
 
 @router.post("/scan/{filename}")
-def scan_file(filename: str, _current_user: CurrentUser):
-    dataframe = parse_log_file(_get_uploaded_file(filename))
+def scan_file(filename: str, current_user: CurrentUser):
+    dataframe = parse_log_file(_get_uploaded_file(filename, current_user["id"]))
     if dataframe.empty:
         return {"threat_count": 0, "threats": []}
 
