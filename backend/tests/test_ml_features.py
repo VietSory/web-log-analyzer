@@ -8,7 +8,13 @@ import pytest
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from core.ml_features import build_preprocessor, prepare_model_frame, temporal_split
+from core.ml_features import (
+    ARTIFACT_SCHEMA_VERSION,
+    MODEL_FEATURES,
+    build_preprocessor,
+    prepare_model_frame,
+    temporal_split,
+)
 
 
 def _rows(count: int) -> pd.DataFrame:
@@ -18,7 +24,7 @@ def _rows(count: int) -> pd.DataFrame:
             "datetime": timestamps,
             "ip": [f"192.0.2.{index % 10 + 1}" for index in range(count)],
             "method": ["GET"] * count,
-            "path": [f"/item/{index % 5}" for index in range(count)],
+            "path": [f"/item/{index % 5}?page={index % 3}" for index in range(count)],
             "protocol": ["HTTP/1.1"] * count,
             "status": [200] * count,
             "size": list(range(count)),
@@ -55,27 +61,46 @@ def test_temporal_split_rejects_small_or_invalid_timestamp_data():
         temporal_split(invalid)
 
 
-def test_preprocessor_handles_unseen_categories_without_aliasing_known_class():
-    train_frame = prepare_model_frame(_rows(30))
-    preprocessor = build_preprocessor()
-    preprocessor.fit(train_frame)
-
-    unseen = _rows(1)
-    unseen.loc[0, "ip"] = "2001:db8::1"
-    unseen.loc[0, "path"] = "/never-seen-before"
-    transformed = preprocessor.transform(prepare_model_frame(unseen))
-
-    assert transformed.shape == (1, 11)
-    assert np.isfinite(transformed).all()
-    assert transformed[0, 0] == -1
-    assert transformed[0, 2] == -1
-
-
-def test_prepare_model_frame_converts_timezone_aware_timestamp_to_utc_features():
-    frame = _rows(1)
-    frame.loc[0, "datetime"] = pd.Timestamp("2026-01-05T23:30:00-05:00")
+def test_model_frame_uses_stable_behavioral_features_not_identifier_ordinals():
+    frame = _rows(2)
+    frame.loc[0, "method"] = "BREW"
+    frame.loc[0, "ip"] = "2001:db8::1"
+    frame.loc[0, "path"] = "/never-seen-before?token=abc"
 
     prepared = prepare_model_frame(frame)
 
-    assert prepared.loc[0, "utc_hour"] == 4
-    assert prepared.loc[0, "utc_day_of_week"] == 1
+    assert ARTIFACT_SCHEMA_VERSION == 2
+    assert tuple(prepared.columns) == MODEL_FEATURES
+    assert prepared.shape == (2, len(MODEL_FEATURES))
+    assert prepared.loc[0, "method_other"] == 1.0
+    assert "ip" not in prepared.columns
+    assert "path" not in prepared.columns
+    assert "referrer" not in prepared.columns
+    assert np.isfinite(prepared.to_numpy()).all()
+
+
+def test_preprocessor_is_fitted_only_on_training_feature_frame():
+    split = temporal_split(_rows(40))
+    train_features = prepare_model_frame(split.train)
+    validation_features = prepare_model_frame(split.validation)
+
+    preprocessor = build_preprocessor()
+    transformed_train = preprocessor.fit_transform(train_features)
+    transformed_validation = preprocessor.transform(validation_features)
+
+    assert transformed_train.shape[1] == len(MODEL_FEATURES)
+    assert transformed_validation.shape[1] == len(MODEL_FEATURES)
+    assert np.isfinite(transformed_train).all()
+    assert np.isfinite(transformed_validation).all()
+
+
+def test_invalid_status_and_negative_size_fail_closed():
+    invalid_status = _rows(1)
+    invalid_status.loc[0, "status"] = 999
+    with pytest.raises(ValueError, match="out-of-range"):
+        prepare_model_frame(invalid_status)
+
+    invalid_size = _rows(1)
+    invalid_size.loc[0, "size"] = -1
+    with pytest.raises(ValueError, match="response sizes"):
+        prepare_model_frame(invalid_size)

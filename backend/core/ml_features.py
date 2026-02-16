@@ -2,28 +2,36 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 
-ARTIFACT_SCHEMA_VERSION = 1
-CATEGORICAL_FEATURES = (
-    "ip",
-    "method",
-    "path",
-    "protocol",
-    "referrer",
-    "user_agent",
-    "source_format",
+ARTIFACT_SCHEMA_VERSION = 2
+_METHOD_BUCKETS = (
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+    "OTHER",
 )
-NUMERIC_FEATURES = (
-    "status",
-    "size",
-    "utc_hour",
-    "utc_day_of_week",
+MODEL_FEATURES = (
+    "utc_hour_sin",
+    "utc_hour_cos",
+    "utc_weekday_sin",
+    "utc_weekday_cos",
+    *tuple(f"method_{method.lower()}" for method in _METHOD_BUCKETS),
+    "status_code",
+    "is_client_error",
+    "is_server_error",
+    "size_log1p",
+    "path_length",
+    "query_length",
+    "user_agent_length",
 )
-MODEL_FEATURES = CATEGORICAL_FEATURES + NUMERIC_FEATURES
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,52 +41,76 @@ class TemporalSplit:
     test: pd.DataFrame
 
 
-def prepare_model_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Normalize parsed log rows into the stable feature schema used by ML."""
-    if dataframe.empty:
-        return pd.DataFrame(columns=MODEL_FEATURES)
+def _method_bucket(value: object) -> str:
+    method = str(value or "").upper()
+    return method if method in _METHOD_BUCKETS[:-1] else "OTHER"
 
-    frame = dataframe.copy()
-    timestamps = pd.to_datetime(frame.get("datetime"), errors="coerce", utc=True)
+
+def prepare_model_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Build bounded behavioral features without ordinal identifiers."""
+    if dataframe.empty:
+        return pd.DataFrame(columns=MODEL_FEATURES, dtype=np.float32)
+
+    frame = pd.DataFrame(index=dataframe.index)
+    timestamps = pd.to_datetime(dataframe.get("datetime"), errors="coerce", utc=True)
     if timestamps.isna().any():
         raise ValueError("ML input contains invalid timestamps")
 
-    frame["utc_hour"] = timestamps.dt.hour.astype("int16")
-    frame["utc_day_of_week"] = timestamps.dt.dayofweek.astype("int16")
+    hours = timestamps.dt.hour.astype(float)
+    weekdays = timestamps.dt.dayofweek.astype(float)
+    hour_angle = 2.0 * np.pi * hours / 24.0
+    weekday_angle = 2.0 * np.pi * weekdays / 7.0
+    frame["utc_hour_sin"] = np.sin(hour_angle)
+    frame["utc_hour_cos"] = np.cos(hour_angle)
+    frame["utc_weekday_sin"] = np.sin(weekday_angle)
+    frame["utc_weekday_cos"] = np.cos(weekday_angle)
 
-    for column in CATEGORICAL_FEATURES:
-        if column not in frame.columns:
-            frame[column] = "unknown"
-        frame[column] = frame[column].fillna("unknown").astype(str)
+    if "method" in dataframe.columns:
+        methods = dataframe["method"].map(_method_bucket)
+    else:
+        methods = pd.Series("OTHER", index=dataframe.index)
+    for method in _METHOD_BUCKETS:
+        frame[f"method_{method.lower()}"] = (methods == method).astype(float)
 
-    for column, default in (("status", 200), ("size", 0)):
-        if column not in frame.columns:
-            frame[column] = default
-        numeric = pd.to_numeric(frame[column], errors="coerce")
-        if numeric.isna().any():
-            raise ValueError(f"ML input contains invalid numeric values in {column}")
-        frame[column] = numeric.astype("float32")
+    if "status" in dataframe.columns:
+        status = pd.to_numeric(dataframe["status"], errors="coerce")
+    else:
+        status = pd.Series(0.0, index=dataframe.index)
+    if status.isna().any():
+        raise ValueError("ML input contains invalid status values")
+    if ((status < 100) | (status > 599)).any():
+        raise ValueError("ML input contains out-of-range HTTP status values")
+    frame["status_code"] = status.astype(float)
+    frame["is_client_error"] = ((status >= 400) & (status < 500)).astype(float)
+    frame["is_server_error"] = (status >= 500).astype(float)
 
-    return frame.loc[:, MODEL_FEATURES]
+    if "size" in dataframe.columns:
+        size = pd.to_numeric(dataframe["size"], errors="coerce")
+    else:
+        size = pd.Series(0.0, index=dataframe.index)
+    if size.isna().any() or (size < 0).any():
+        raise ValueError("ML input contains invalid response sizes")
+    frame["size_log1p"] = np.log1p(size.astype(float))
+
+    if "path" in dataframe.columns:
+        paths = dataframe["path"].fillna("").astype(str)
+    else:
+        paths = pd.Series("", index=dataframe.index)
+    frame["path_length"] = paths.str.len().clip(upper=4096).astype(float)
+    frame["query_length"] = paths.str.partition("?")[2].str.len().clip(upper=4096).astype(float)
+
+    if "user_agent" in dataframe.columns:
+        user_agents = dataframe["user_agent"].fillna("").astype(str)
+    else:
+        user_agents = pd.Series("", index=dataframe.index)
+    frame["user_agent_length"] = user_agents.str.len().clip(upper=4096).astype(float)
+
+    return frame.loc[:, MODEL_FEATURES].astype(np.float32)
 
 
-def build_preprocessor() -> ColumnTransformer:
-    """Create a training-only fitted transformer with explicit unseen-category behavior."""
-    categorical = OrdinalEncoder(
-        handle_unknown="use_encoded_value",
-        unknown_value=-1,
-        encoded_missing_value=-1,
-        dtype="float32",
-    )
-    numeric = StandardScaler()
-    return ColumnTransformer(
-        transformers=[
-            ("categorical", categorical, list(CATEGORICAL_FEATURES)),
-            ("numeric", numeric, list(NUMERIC_FEATURES)),
-        ],
-        remainder="drop",
-        verbose_feature_names_out=False,
-    )
+def build_preprocessor() -> StandardScaler:
+    """Return a scaler that must be fitted on training rows only."""
+    return StandardScaler()
 
 
 def temporal_split(
@@ -88,7 +120,7 @@ def temporal_split(
     validation_fraction: float = 0.15,
     min_rows: int = 30,
 ) -> TemporalSplit:
-    """Split chronologically so future rows never influence preprocessing or training."""
+    """Split chronologically so future rows never influence model fitting."""
     if len(dataframe) < min_rows:
         raise ValueError(f"At least {min_rows} parsed rows are required for training")
     if not 0 < train_fraction < 1:
