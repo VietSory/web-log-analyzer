@@ -22,6 +22,8 @@ class Settings(BaseSettings):
         le=100 * 1024 * 1024,
     )
 
+    model_dir: Path = Path("models")
+
     auth_secret_key: SecretStr = SecretStr(
         "dev-only-change-this-secret-at-least-32-bytes"
     )
