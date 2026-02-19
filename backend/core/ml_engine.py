@@ -1,146 +1,170 @@
-import os
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
-from datetime import datetime
+
+from core.ml_features import ARTIFACT_SCHEMA_VERSION, MODEL_FEATURES, prepare_model_frame
+
+
+class ModelArtifactError(RuntimeError):
+    pass
+
+
+class InferenceError(RuntimeError):
+    pass
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file_handle:
+        for chunk in iter(lambda: file_handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 
 class LogAnomalyDetector:
-    def __init__(self, model_dir: str):
-        self.model_dir = model_dir
-        self.model = None
-        self.scaler = None
-        self.label_encoders = None
-        self.threshold = None 
+    def __init__(self, model_dir: str | Path):
+        self.model_dir = Path(model_dir)
+        self.model: Any | None = None
+        self.preprocessor: Any | None = None
+        self.threshold: float | None = None
+        self.metadata: dict[str, Any] | None = None
 
-    def load_resources(self):
-        print(f"--- Loading AI Resources from {self.model_dir} ---")
-        
-        # 1. Load Model (.keras)
-        try:
-            from tensorflow.keras.models import load_model # type: ignore
-            
-            model_path = os.path.join(self.model_dir, 'autoencoder_model.keras')
-            if os.path.exists(model_path):
-                self.model = load_model(model_path)
-                print(f"✅ Model loaded: {model_path}")
-            else:
-                print(f"❌ Model not found: {model_path}")
-        except Exception as e:
-            print(f"❌ Error loading Model: {e}")
+    @property
+    def ready(self) -> bool:
+        return (
+            self.model is not None
+            and self.preprocessor is not None
+            and self.threshold is not None
+            and self.metadata is not None
+        )
+
+    def load_resources(self) -> None:
+        metadata_path = self.model_dir / "metadata.json"
+        if not metadata_path.is_file():
+            raise ModelArtifactError(f"Model metadata not found: {metadata_path}")
 
         try:
-            scaler_path = os.path.join(self.model_dir, 'scaler.pkl')
-            le_path = os.path.join(self.model_dir, 'label_encoders.pkl')
-            th_path = os.path.join(self.model_dir, 'reconstruction_threshold.pkl')
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ModelArtifactError("Model metadata is unreadable") from exc
 
-            if os.path.exists(scaler_path):
-                self.scaler = joblib.load(scaler_path)
-                print("✅ Scaler loaded")
-            
-            if os.path.exists(le_path):
-                self.label_encoders = joblib.load(le_path)
-                print("✅ Label Encoders loaded")
+        if metadata.get("artifact_schema_version") != ARTIFACT_SCHEMA_VERSION:
+            raise ModelArtifactError("Unsupported model artifact schema version")
+        if metadata.get("feature_schema") != list(MODEL_FEATURES):
+            raise ModelArtifactError("Model feature schema does not match runtime schema")
 
-            if os.path.exists(th_path):
-                self.threshold = joblib.load(th_path)
-                print(f"✅ Threshold loaded from Train Model: {self.threshold:.6f}")
-            else:
-                self.threshold = 0.05
-                print(f"⚠️ Threshold file not found. Using default fallback: {self.threshold}")
-                
-        except Exception as e:
-            print(f"❌ Error loading Pickle files: {e}")
-            # Đảm bảo threshold luôn có giá trị để không crash
-            if self.threshold is None: self.threshold = 0.05
+        threshold = metadata.get("threshold", {}).get("value")
+        if not isinstance(threshold, (int, float)) or not np.isfinite(threshold) or threshold <= 0:
+            raise ModelArtifactError("Model threshold is missing or invalid")
 
-    def safe_label_transform(self, encoder, values):
-        classes = list(encoder.classes_)
-        val_map = {val: idx for idx, val in enumerate(classes)}
-        return [val_map.get(str(x), 0) for x in values]
+        artifacts = metadata.get("artifacts")
+        if not isinstance(artifacts, dict):
+            raise ModelArtifactError("Model artifact metadata is missing")
 
-    def preprocess_features(self, df: pd.DataFrame):
-        if df.empty or self.model is None or self.scaler is None:
-            return None, None
+        model_path = self._validated_artifact_path(artifacts, "model")
+        preprocessor_path = self._validated_artifact_path(artifacts, "preprocessor")
 
-        features = df.copy()
-
-        # Xử lý Thời gian (Hour)
-        if 'datetime' in features.columns:
-            time_col = pd.to_datetime(features['datetime'], errors='coerce')
-            features['hour'] = time_col.dt.hour.fillna(0).astype(int)
-        else:
-            features['hour'] = 0
-        cols_to_encode = ['ip', 'method', 'path', 'referrer', 'user_agent']
-        
-        for col in cols_to_encode:
-            if col not in features.columns:
-                features[col] = "unknown"
-            
-            features[col] = features[col].astype(str)
-            
-            # Label Encoding an toàn
-            if self.label_encoders and col in self.label_encoders:
-                le = self.label_encoders[col]
-                features[col + '_enc'] = self.safe_label_transform(le, features[col])
-            else:
-                features[col + '_enc'] = 0
-
-        # Chuẩn bị Vector đầu vào
-        features['status'] = pd.to_numeric(features['status'], errors='coerce').fillna(200)
-        features['size'] = pd.to_numeric(features['size'], errors='coerce').fillna(0)
-        feature_columns = [
-            'ip_enc', 'method_enc', 'path_enc', 'status', 
-            'size', 'referrer_enc', 'user_agent_enc', 'hour'
-        ]
-        
-        # Kiểm tra đủ cột chưa
-        missing = [c for c in feature_columns if c not in features.columns]
-        if missing:
-            print(f"❌ Missing columns: {missing}")
-            return None, None
-
-        final_data = features[feature_columns].values.astype(np.float32)
         try:
-            X_scaled = self.scaler.transform(final_data)
-            return X_scaled, features
-        except Exception as e:
-            print(f"❌ Scaling Error: {e}")
-            return None, None
+            from tensorflow.keras.models import load_model  # type: ignore
 
-    def detect_anomalies(self, df: pd.DataFrame):
-        threats = []
-        if self.model is None:
+            model = load_model(model_path)
+            preprocessor = joblib.load(preprocessor_path)
+        except (OSError, ValueError, TypeError, ImportError) as exc:
+            raise ModelArtifactError("Could not load model artifact bundle") from exc
+
+        self.model = model
+        self.preprocessor = preprocessor
+        self.threshold = float(threshold)
+        self.metadata = metadata
+
+    def _validated_artifact_path(self, artifacts: dict[str, Any], key: str) -> Path:
+        entry = artifacts.get(key)
+        if not isinstance(entry, dict):
+            raise ModelArtifactError(f"Missing {key} artifact metadata")
+
+        filename = entry.get("filename")
+        expected_digest = entry.get("sha256")
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ModelArtifactError(f"Invalid {key} artifact filename")
+        if not isinstance(expected_digest, str) or len(expected_digest) != 64:
+            raise ModelArtifactError(f"Invalid {key} artifact digest")
+
+        path = self.model_dir / filename
+        if not path.is_file():
+            raise ModelArtifactError(f"Missing {key} artifact: {path}")
+        if _sha256(path) != expected_digest:
+            raise ModelArtifactError(f"Checksum mismatch for {key} artifact")
+        return path
+
+    def preprocess_features(self, dataframe: pd.DataFrame) -> np.ndarray:
+        if not self.ready:
+            raise ModelArtifactError("Model resources have not been loaded")
+        if dataframe.empty:
+            return np.empty((0, len(MODEL_FEATURES)), dtype=np.float32)
+
+        try:
+            frame = prepare_model_frame(dataframe)
+            values = self.preprocessor.transform(frame).astype(np.float32)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise InferenceError("Could not preprocess log features") from exc
+
+        if not np.isfinite(values).all():
+            raise InferenceError("Preprocessed features contain non-finite values")
+        return values
+
+    def detect_anomalies(self, dataframe: pd.DataFrame) -> list[dict[str, Any]]:
+        if dataframe.empty:
             return []
+        if not self.ready:
+            raise ModelArtifactError("Model resources have not been loaded")
 
-        input_data, processed_df = self.preprocess_features(df)
-        
-        if input_data is None or processed_df is None:
-            return []
-
+        input_values = self.preprocess_features(dataframe)
         try:
-            # Predict
-            reconstructions = self.model.predict(input_data, verbose=0)
-            
-            # Tính MSE
-            mse = np.mean(np.power(input_data - reconstructions, 2), axis=1)
-            
-            curr_thresh = self.threshold if self.threshold is not None else 0.05
-            anomaly_indices = np.where(mse > curr_thresh)[0]
-            print(f"🔍 Scan complete. Threshold={curr_thresh:.4f}. Found {len(anomaly_indices)} anomalies.")
-            for idx in anomaly_indices:
-                row = processed_df.iloc[idx]
-                loss = float(mse[idx])
-                severity = "High"
-                threats.append({
-                    "ip": str(row.get('ip', 'Unknown')),
-                    "type": "Anomaly Detected",
+            reconstructions = self.model.predict(input_values, verbose=0)
+        except (ValueError, TypeError, RuntimeError) as exc:
+            raise InferenceError("Model inference failed") from exc
+
+        if reconstructions.shape != input_values.shape:
+            raise InferenceError("Model reconstruction shape does not match input")
+
+        errors = np.mean(np.square(input_values - reconstructions), axis=1)
+        if not np.isfinite(errors).all():
+            raise InferenceError("Model produced non-finite reconstruction errors")
+
+        threshold = float(self.threshold)
+        anomaly_indices = np.flatnonzero(errors > threshold)
+        source = dataframe.reset_index(drop=True)
+        threats: list[dict[str, Any]] = []
+
+        for index in anomaly_indices:
+            row = source.iloc[int(index)]
+            loss = float(errors[int(index)])
+            ratio = loss / threshold
+            if ratio >= 4:
+                severity = "critical"
+            elif ratio >= 2:
+                severity = "high"
+            else:
+                severity = "medium"
+
+            threats.append(
+                {
+                    "ip": str(row.get("ip", "unknown")),
+                    "type": "ml_anomaly",
                     "severity": severity,
-                    "time": str(row.get('datetime', '')),
-                    "reconstruction_error": round(loss, 4),
-                    "details": f"Path: {row.get('path')}"
-                })
-
-        except Exception as e:
-            print(f"❌ Inference Error: {e}")
+                    "time": str(row.get("datetime", "")),
+                    "reconstruction_error": round(loss, 6),
+                    "threshold": round(threshold, 6),
+                    "score_ratio": round(ratio, 4),
+                    "details": f"Path: {row.get('path', 'unknown')}",
+                }
+            )
 
         return threats

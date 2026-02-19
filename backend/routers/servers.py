@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from ipaddress import IPv4Address
 from typing import Annotated
 
@@ -9,7 +10,8 @@ from pydantic import BaseModel, Field
 
 from core.auth import get_current_user
 from core.mail_service import mail_service
-from core.ml_engine import LogAnomalyDetector
+from core.ml_engine import InferenceError, ModelArtifactError
+from core.ml_runtime import get_anomaly_detector
 from database import (
     create_log,
     create_server,
@@ -34,6 +36,7 @@ class LogAnalyzeRequest(BaseModel):
     ip: str | None = Field(default=None, max_length=64)
     method: str | None = Field(default=None, min_length=1, max_length=16)
     path: str | None = Field(default=None, max_length=4096)
+    protocol: str | None = Field(default=None, max_length=32)
     status: int | None = Field(default=None, ge=100, le=599)
     size: int | None = Field(default=None, ge=0)
     referrer: str | None = Field(default=None, max_length=4096)
@@ -50,15 +53,11 @@ def _owned_server(server_id: str, current_user: dict) -> dict:
 
 @router.post("/servers", status_code=status.HTTP_201_CREATED)
 def create_server_endpoint(request: CreateServerRequest, current_user: CurrentUser):
-    try:
-        server_id = create_server(
-            current_user["id"],
-            request.name.strip(),
-            str(request.ipv4) if request.ipv4 else None,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Failed to create server") from exc
-
+    server_id = create_server(
+        current_user["id"],
+        request.name.strip(),
+        str(request.ipv4) if request.ipv4 else None,
+    )
     return {
         "status": "success",
         "message": "Server created successfully",
@@ -97,8 +96,8 @@ def get_server_stats_endpoint(server_id: str, current_user: CurrentUser):
     logs = get_server_logs(server_id)
 
     total_logs = len(logs)
-    warning_logs = [log for log in logs if log.get("status", "").lower() == "warning"]
-    safe_logs = [log for log in logs if log.get("status", "").lower() == "safe"]
+    warning_logs = [log for log in logs if str(log.get("status", "")).lower() == "warning"]
+    safe_logs = [log for log in logs if str(log.get("status", "")).lower() == "safe"]
 
     status_counts: dict[str, int] = {}
     for log in logs:
@@ -129,39 +128,43 @@ def analyze_log_endpoint(
     current_user: CurrentUser,
 ):
     server = _owned_server(server_id, current_user)
-
-    detector = LogAnomalyDetector("models")
-    detector.load_resources()
-
+    event_time = request.datetime or datetime.now(timezone.utc).isoformat(timespec="seconds")
     log_data = {
         "ip": request.ip or "unknown",
         "method": request.method or "GET",
         "path": request.path or "/",
+        "protocol": request.protocol or "unknown",
         "status": request.status if request.status is not None else 200,
         "size": request.size if request.size is not None else 0,
         "referrer": request.referrer or "-",
         "user_agent": request.user_agent or "unknown",
-        "datetime": request.datetime or "",
+        "datetime": event_time,
+        "source_format": "api",
     }
 
     try:
-        anomalies = detector.detect_anomalies(pd.DataFrame([log_data]))
-        log_status = "warning" if anomalies else "safe"
-        log_id = create_log(server_id, log_status, request.log_content)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Failed to analyze log") from exc
+        anomalies = get_anomaly_detector().detect_anomalies(pd.DataFrame([log_data]))
+    except ModelArtifactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI model is not available",
+        ) from exc
+    except InferenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI inference failed",
+        ) from exc
+
+    log_status = "warning" if anomalies else "safe"
+    log_id = create_log(server_id, log_status, request.log_content)
 
     if log_status == "warning":
-        try:
-            mail_service.send_warning_alert(
-                server_name=server.get("name", "Unknown Server"),
-                server_id=server_id,
-                log_content=request.log_content,
-                anomaly_details=anomalies,
-            )
-        except Exception:
-            # Alert delivery is best-effort and must not roll back a persisted analysis.
-            pass
+        mail_service.send_warning_alert(
+            server_name=server.get("name", "Unknown Server"),
+            server_id=server_id,
+            log_content=request.log_content,
+            anomaly_details=anomalies,
+        )
 
     return {
         "status": "success",
