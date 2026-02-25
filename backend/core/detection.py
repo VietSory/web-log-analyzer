@@ -106,26 +106,28 @@ def detect_rule_threats(dataframe: pd.DataFrame) -> list[dict[str, object]]:
                 )
             )
 
-        if _SQLI_PATTERN.search(inspection_text):
+        sqli_match = _SQLI_PATTERN.search(inspection_text)
+        if sqli_match is not None:
             detections.append(
                 _detection(
                     rule_id="WEB-SQLI-001",
                     title="SQL injection-like payload",
                     severity="high",
                     row=row,
-                    evidence=path,
+                    evidence=f"matched={sqli_match.group(0)}",
                     path=path,
                 )
             )
 
-        if _XSS_PATTERN.search(inspection_text):
+        xss_match = _XSS_PATTERN.search(inspection_text)
+        if xss_match is not None:
             detections.append(
                 _detection(
                     rule_id="WEB-XSS-001",
                     title="Cross-site scripting-like payload",
                     severity="high",
                     row=row,
-                    evidence=path,
+                    evidence=f"matched={xss_match.group(0)}",
                     path=path,
                 )
             )
