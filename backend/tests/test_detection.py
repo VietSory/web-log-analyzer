@@ -37,13 +37,17 @@ def test_detects_plain_and_encoded_path_traversal():
     assert "WEB-TRAVERSAL-001" in _rule_ids("/%252e%252e/%252e%252e/etc/passwd")
 
 
-def test_detects_sqli_and_xss_signatures_with_evidence():
+def test_detects_sqli_and_xss_signatures_with_matched_evidence():
     sqli = detect_rule_threats(_frame("/search?q=' UNION SELECT password FROM users--"))
     assert sqli[0]["rule_id"] == "WEB-SQLI-001"
     assert "UNION SELECT" in sqli[0]["evidence"]
     assert sqli[0]["severity"] == "high"
 
-    assert "WEB-XSS-001" in _rule_ids("/search?q=%3Cscript%3Ealert(1)%3C/script%3E")
+    xss = detect_rule_threats(
+        _frame("/", user_agent="scanner <img src=x onerror=alert(1)>")
+    )
+    assert xss[0]["rule_id"] == "WEB-XSS-001"
+    assert "onerror" in xss[0]["evidence"].lower()
 
 
 def test_sensitive_probe_escalates_when_access_is_denied():
