@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     auth_algorithm: Literal["HS256"] = "HS256"
     access_token_expire_minutes: int = Field(default=30, ge=5, le=1440)
 
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = Field(default=120, ge=1, le=100_000)
+    auth_rate_limit_requests: int = Field(default=10, ge=1, le=10_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+
     cors_origins: list[str] = ["http://localhost:8501"]
     cors_allow_credentials: bool = True
     cors_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
@@ -56,6 +61,11 @@ class Settings(BaseSettings):
             raise ValueError("AUTH_SECRET_KEY must contain at least 32 bytes")
         if self.app_env == "production" and secret.startswith("dev-only-"):
             raise ValueError("production requires a non-default AUTH_SECRET_KEY")
+
+        if self.auth_rate_limit_requests > self.rate_limit_requests:
+            raise ValueError(
+                "AUTH_RATE_LIMIT_REQUESTS must not exceed RATE_LIMIT_REQUESTS"
+            )
 
         if self.cors_allow_credentials:
             if "*" in self.cors_origins:
