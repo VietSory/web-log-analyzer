@@ -1,0 +1,185 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+      - portfolio-rebuild-workspace
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-audit:
+    name: Python dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            frontend/requirements.txt
+
+      - name: Install audit tooling
+        run: python -m pip install --disable-pip-version-check pip-audit==2.10.1
+
+      - name: Generate dependency SBOMs
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts
+          pip-audit -r backend/requirements.txt \
+            --progress-spinner off \
+            --format cyclonedx-json \
+            --output artifacts/backend-dependencies.cdx.json
+          pip-audit -r frontend/requirements.txt \
+            --progress-spinner off \
+            --format cyclonedx-json \
+            --output artifacts/frontend-dependencies.cdx.json
+
+      - name: Upload dependency SBOMs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: dependency-sboms
+          path: artifacts/*.cdx.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce dependency audit
+        run: |
+          status=0
+          pip-audit -r backend/requirements.txt --progress-spinner off || status=1
+          pip-audit -r frontend/requirements.txt --progress-spinner off || status=1
+          exit "$status"
+
+  repository-scan:
+    name: Repository vulnerability and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Prepare scan output
+        run: mkdir -p sarif
+
+      - name: Scan repository with Trivy
+        id: repo_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: sarif/repository.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload repository SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: sarif/repository.sarif
+          category: trivy-repository
+
+      - name: Enforce repository scan
+        if: steps.repo_scan.outcome == 'failure'
+        run: exit 1
+
+  container-scan:
+    name: Container scan and SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build application images
+        run: |
+          docker build -t web-log-analyzer-backend:${{ github.sha }} backend
+          docker build -t web-log-analyzer-frontend:${{ github.sha }} frontend
+
+      - name: Prepare scan output
+        run: mkdir -p sarif sbom
+
+      - name: Scan backend image
+        id: backend_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: web-log-analyzer-backend:${{ github.sha }}
+          format: sarif
+          output: sarif/backend-container.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Scan frontend image
+        id: frontend_scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: web-log-analyzer-frontend:${{ github.sha }}
+          format: sarif
+          output: sarif/frontend-container.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Generate backend image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: web-log-analyzer-backend:${{ github.sha }}
+          format: cyclonedx
+          output: sbom/backend-image.cdx.json
+          exit-code: "0"
+
+      - name: Generate frontend image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: web-log-analyzer-frontend:${{ github.sha }}
+          format: cyclonedx
+          output: sbom/frontend-image.cdx.json
+          exit-code: "0"
+
+      - name: Upload container SARIF
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: sarif
+          category: trivy-containers
+
+      - name: Upload image SBOMs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: image-sboms
+          path: sbom/*.cdx.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce container vulnerability gate
+        if: steps.backend_scan.outcome == 'failure' || steps.frontend_scan.outcome == 'failure'
+        run: exit 1
