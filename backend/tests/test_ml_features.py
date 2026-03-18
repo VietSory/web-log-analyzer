@@ -56,6 +56,7 @@ def test_temporal_split_rejects_small_or_invalid_timestamp_data():
         temporal_split(_rows(10))
 
     invalid = _rows(30)
+    invalid["datetime"] = invalid["datetime"].astype(object)
     invalid.loc[0, "datetime"] = "not-a-timestamp"
     with pytest.raises(ValueError, match="valid timestamps"):
         temporal_split(invalid)
