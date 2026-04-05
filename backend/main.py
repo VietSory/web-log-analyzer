@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from config import get_settings
 from core.rate_limit import InMemoryRateLimiter, RateLimitDecision
+from core.report_store import init_report_store
 from database import get_db_connection, init_db
 from routers import analyze, auth, history, servers, stats, upload
 
@@ -27,6 +28,7 @@ _rate_limiter = InMemoryRateLimiter()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    init_report_store()
     yield
 
 
