@@ -10,24 +10,26 @@ sys.path.insert(0, str(BACKEND_DIR))
 from routers import history, servers
 
 
-def test_history_owner_check_hides_other_users_records(monkeypatch):
-    monkeypatch.setattr(
-        history,
-        "get_scan_details",
-        lambda _history_id: {"id": "h1", "owner_id": "other-user"},
-    )
+def test_history_detail_hides_unowned_or_missing_reports(monkeypatch):
+    monkeypatch.setattr(history, "get_report", lambda _report_id, _owner_id: None)
 
     with pytest.raises(HTTPException) as exc_info:
-        history._owned_history("h1", {"id": "current-user"})
+        history.get_history_detail("h1", {"id": "current-user"})
 
     assert exc_info.value.status_code == 404
 
 
-def test_history_owner_check_returns_owned_record(monkeypatch):
-    record = {"id": "h1", "owner_id": "current-user"}
-    monkeypatch.setattr(history, "get_scan_details", lambda _history_id: record)
+def test_history_detail_returns_owner_scoped_report(monkeypatch):
+    report = {"id": "h1", "owner_id": "current-user"}
+    monkeypatch.setattr(
+        history,
+        "get_report",
+        lambda report_id, owner_id: report
+        if (report_id, owner_id) == ("h1", "current-user")
+        else None,
+    )
 
-    assert history._owned_history("h1", {"id": "current-user"}) is record
+    assert history.get_history_detail("h1", {"id": "current-user"}) is report
 
 
 def test_server_owner_check_hides_other_users_servers(monkeypatch):
