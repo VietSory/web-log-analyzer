@@ -60,10 +60,13 @@ def test_parse_combined_ipv6_log_line():
 
 
 def test_parse_combined_line_unescapes_quoted_and_backslash_fields():
+    escaped_quote = r'\"'
+    escaped_backslash = r"\\"
     line = (
         '192.0.2.20 - - [12/Feb/2026:06:15:04 +0700] '
         '"GET /search?q=hello HTTP/1.1" 200 15 '
-        '"https://example.test/\"quoted\"" "client\\agent \"v1\""'
+        f'"https://example.test/{escaped_quote}quoted{escaped_quote}" '
+        f'"client{escaped_backslash}agent {escaped_quote}v1{escaped_quote}"'
     )
 
     event = parse_log_line(line)
