@@ -47,7 +47,7 @@ def render_history():
 
     dataframe = pd.DataFrame(history_data)
     dataframe["display_label"] = dataframe.apply(
-        lambda row: f"{row['filename']} | {row['scan_date']} | ID: {row['id'][:8]}...",
+        lambda row: f"{row['filename']} | {row['created_at']} | ID: {row['id'][:8]}...",
         axis=1,
     )
 
@@ -55,7 +55,7 @@ def render_history():
     with c_search:
         search_query = st.text_input(
             "🔍 Tìm kiếm báo cáo:",
-            placeholder="Nhập tên file, ngày hoặc ID...",
+            placeholder="Nhập tên file, thời gian hoặc ID...",
         )
     with c_stats:
         st.metric("Tổng báo cáo", len(dataframe), label_visibility="visible")
@@ -64,7 +64,7 @@ def render_history():
         query = search_query.strip()
         filtered = dataframe[
             dataframe["filename"].str.contains(query, case=False, regex=False, na=False)
-            | dataframe["scan_date"].str.contains(query, case=False, regex=False, na=False)
+            | dataframe["created_at"].str.contains(query, case=False, regex=False, na=False)
             | dataframe["id"].astype(str).str.contains(query, case=False, regex=False, na=False)
         ]
     else:
@@ -77,9 +77,11 @@ def render_history():
             column_config={
                 "id": st.column_config.TextColumn("ID", width="medium"),
                 "filename": st.column_config.TextColumn("Tên File", width="medium"),
-                "scan_date": st.column_config.TextColumn("Thời gian lưu", width="medium"),
+                "created_at": st.column_config.TextColumn("Thời gian lưu", width="medium"),
                 "total_requests": st.column_config.NumberColumn("Reqs"),
                 "error_rate": st.column_config.NumberColumn("Lỗi %", format="%.2f%%"),
+                "overall_risk_score": st.column_config.NumberColumn("Risk", min_value=0, max_value=100),
+                "overall_risk_severity": st.column_config.TextColumn("Severity"),
                 "display_label": None,
             },
             use_container_width=True,
@@ -121,10 +123,7 @@ def render_history():
     if btn_view:
         with st.spinner("Đang tải dữ liệu báo cáo..."):
             try:
-                detail_response = api_request(
-                    "GET",
-                    f"/api/history/detail/{selected_id}",
-                )
+                detail_response = api_request("GET", f"/api/history/detail/{selected_id}")
             except requests.RequestException as exc:
                 st.error(f"Lỗi kết nối: {exc}")
             else:
@@ -137,49 +136,67 @@ def render_history():
 def render_report_detail(detail: dict):
     st.divider()
     st.markdown(f"### 📊 Báo cáo chi tiết: `{detail['filename']}`")
-    st.caption(f"🕒 Thời gian lưu: {detail['scan_date']}")
+    st.caption(f"🕒 Thời gian lưu: {detail['created_at']}")
 
-    k1, k2, k3 = st.columns(3)
+    risk = detail.get("risk", {})
+    k1, k2, k3, k4 = st.columns(4)
     k1.metric("Tổng Requests", f"{detail['total_requests']:,}", border=True)
     k2.metric("IP Duy nhất", f"{detail['unique_ips']:,}", border=True)
     error_rate = detail["error_rate"]
-    k3.metric(
-        "Tỷ lệ Lỗi (5xx)",
-        f"{error_rate}%",
-        delta_color="inverse" if error_rate > 5 else "normal",
+    k3.metric("Tỷ lệ Lỗi (5xx)", f"{error_rate}%", border=True)
+    k4.metric(
+        "Risk Score",
+        f"{risk.get('overall_risk_score', 0)}/100",
+        help=f"Severity: {risk.get('overall_risk_severity', 'unknown')}",
         border=True,
     )
 
+    stats = detail.get("stats", {})
     c1, c2 = st.columns([2, 1])
     with c1:
         st.markdown("**📈 Lưu lượng theo giờ**")
-        traffic = detail.get("traffic_data", {})
+        traffic = stats.get("traffic_chart", {})
         if traffic:
             traffic_frame = pd.DataFrame(list(traffic.items()), columns=["Time", "Requests"])
-            traffic_frame["Time"] = pd.to_datetime(traffic_frame["Time"])
+            traffic_frame["Time"] = pd.to_datetime(traffic_frame["Time"], errors="coerce")
+            traffic_frame = traffic_frame.dropna(subset=["Time"])
             st.line_chart(traffic_frame.set_index("Time").sort_index(), height=200)
         else:
             st.info("Không có dữ liệu biểu đồ.")
 
     with c2:
         st.markdown("**🍩 Mã trạng thái**")
-        statuses = detail.get("status_data", {})
+        statuses = stats.get("status_distribution", {})
         if statuses:
             status_frame = pd.DataFrame(list(statuses.items()), columns=["Code", "Count"])
             st.bar_chart(status_frame.set_index("Code"), height=200)
 
-    st.subheader("🚨 Nhật ký Mối đe dọa")
-    threats = detail.get("threats", [])
-    if not threats:
-        st.success("✅ Báo cáo này không chứa sự kiện bất thường đã lưu.")
+    st.caption(
+        f"Analysis: {detail.get('analysis_status', 'unknown')} · "
+        f"ML: {detail.get('ml_status', 'unknown')}"
+    )
+    st.subheader("🚨 Findings")
+    findings = detail.get("findings", detail.get("threats", []))
+    if not findings:
+        st.success("✅ Báo cáo này không chứa finding đã lưu.")
         return
 
+    rows = []
+    for finding in findings:
+        rows.append(
+            {
+                "source": finding.get("source", "unknown"),
+                "kind": finding.get("rule_id", finding.get("type", "unknown")),
+                "severity": finding.get("risk_severity", finding.get("severity", "unknown")),
+                "risk_score": finding.get("risk_score"),
+                "time": finding.get("time", ""),
+                "ip": finding.get("ip", "unknown"),
+                "path": finding.get("path", ""),
+                "evidence/details": finding.get("evidence", finding.get("details", "")),
+                "reconstruction_error": finding.get("reconstruction_error"),
+            }
+        )
+
     with st.container(border=True):
-        st.error(f"Phát hiện {len(threats)} hành vi bất thường.")
-        threat_frame = pd.DataFrame(threats)
-        columns = [
-            column
-            for column in ["time", "ip", "severity", "reconstruction_error", "details"]
-            if column in threat_frame.columns
-        ]
-        st.dataframe(threat_frame[columns], use_container_width=True, hide_index=True)
+        st.warning(f"Có {len(rows)} finding cần xem xét.")
+        st.dataframe(rows, use_container_width=True, hide_index=True)
