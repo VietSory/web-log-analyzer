@@ -30,6 +30,7 @@ class InMemoryRateLimiter:
         limit: int,
         window_seconds: int,
         now: float | None = None,
+        consume: bool = True,
     ) -> RateLimitDecision:
         if limit < 1:
             raise ValueError("limit must be positive")
@@ -57,7 +58,8 @@ class InMemoryRateLimiter:
                     retry_after_seconds=retry_after,
                 )
             else:
-                events.append(timestamp)
+                if consume:
+                    events.append(timestamp)
                 decision = RateLimitDecision(
                     allowed=True,
                     limit=limit,
@@ -71,6 +73,11 @@ class InMemoryRateLimiter:
                 self._checks_since_cleanup = 0
 
             return decision
+
+    def clear(self, key: str) -> None:
+        with self._lock:
+            self._events.pop(key, None)
+            self._windows.pop(key, None)
 
     def _cleanup(self, now: float) -> None:
         expired_keys: list[str] = []
