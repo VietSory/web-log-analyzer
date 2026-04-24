@@ -59,6 +59,20 @@ def test_parse_combined_ipv6_log_line():
     assert event.path == "/health"
 
 
+def test_parse_combined_line_unescapes_quoted_and_backslash_fields():
+    line = (
+        '192.0.2.20 - - [12/Feb/2026:06:15:04 +0700] '
+        '"GET /search?q=hello HTTP/1.1" 200 15 '
+        '"https://example.test/\"quoted\"" "client\\agent \"v1\""'
+    )
+
+    event = parse_log_line(line)
+
+    assert event is not None
+    assert event.referrer == 'https://example.test/"quoted"'
+    assert event.user_agent == 'client\\agent "v1"'
+
+
 def test_rejects_malformed_timestamp_and_invalid_ip():
     malformed_timestamp = (
         '192.0.2.10 - - [not-a-date] "GET / HTTP/1.1" 200 1 "-" "curl"'
