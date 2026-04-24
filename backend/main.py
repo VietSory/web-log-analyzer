@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import get_settings
+from core.observability import configure_observability
 from core.rate_limit import InMemoryRateLimiter, RateLimitDecision
 from core.report_store import init_report_store
 from database import get_db_connection, init_db
@@ -37,7 +38,10 @@ class RateLimitPolicy:
 async def lifespan(_: FastAPI):
     init_db()
     init_report_store()
-    yield
+    try:
+        yield
+    finally:
+        telemetry_runtime.shutdown()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -48,6 +52,12 @@ app.add_middleware(
     allow_credentials=settings.cors_allow_credentials,
     allow_methods=settings.cors_methods,
     allow_headers=settings.cors_headers,
+)
+
+telemetry_runtime = configure_observability(
+    app,
+    enabled=settings.otel_enabled,
+    service_name=settings.otel_service_name,
 )
 
 
@@ -172,6 +182,7 @@ def readiness():
         "components": {
             "database": database_status,
             "ml_model": model_status,
+            "telemetry": "enabled" if telemetry_runtime.enabled else "disabled",
         },
     }
     if database_status != "ready":
