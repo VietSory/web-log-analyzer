@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import get_settings
+from core.logging_config import configure_logging
 from core.observability import configure_observability
 from core.rate_limit import InMemoryRateLimiter, RateLimitDecision
 from core.report_store import init_report_store
@@ -22,6 +23,7 @@ from routers import analyze, auth, history, servers, stats, upload
 
 
 settings = get_settings()
+configure_logging(level=settings.log_level, json_output=settings.log_json)
 logger = logging.getLogger("web_log_analyzer.http")
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _rate_limiter = InMemoryRateLimiter()
@@ -110,11 +112,11 @@ async def request_context(request: Request, call_next):
         if not decision.allowed:
             duration_ms = round((perf_counter() - started_at) * 1000, 2)
             logger.warning(
-                "request_rate_limited method=%s path=%s request_id=%s duration_ms=%s",
+                "request_rate_limited method=%s path=%s duration_ms=%s",
                 request.method,
                 request.url.path,
-                request_id,
                 duration_ms,
+                extra={"request_id": request_id},
             )
             headers = {"X-Request-ID": request_id}
             if policy.disclose_quota:
@@ -131,11 +133,11 @@ async def request_context(request: Request, call_next):
     except Exception:
         duration_ms = round((perf_counter() - started_at) * 1000, 2)
         logger.exception(
-            "request_failed method=%s path=%s request_id=%s duration_ms=%s",
+            "request_failed method=%s path=%s duration_ms=%s",
             request.method,
             request.url.path,
-            request_id,
             duration_ms,
+            extra={"request_id": request_id},
         )
         raise
 
@@ -146,12 +148,12 @@ async def request_context(request: Request, call_next):
             response.headers[header_name] = header_value
 
     logger.info(
-        "request_complete method=%s path=%s status=%s request_id=%s duration_ms=%s",
+        "request_complete method=%s path=%s status=%s duration_ms=%s",
         request.method,
         request.url.path,
         response.status_code,
-        request_id,
         duration_ms,
+        extra={"request_id": request_id},
     )
     return response
 
