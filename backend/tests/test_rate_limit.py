@@ -23,6 +23,57 @@ def test_limiter_allows_until_capacity_then_returns_retry_after():
     assert blocked.retry_after_seconds == 58
 
 
+def test_limiter_can_preflight_without_consuming_capacity():
+    limiter = InMemoryRateLimiter()
+
+    preflight = limiter.check(
+        "account:alice",
+        limit=1,
+        window_seconds=60,
+        now=100.0,
+        consume=False,
+    )
+    first_failure = limiter.check(
+        "account:alice",
+        limit=1,
+        window_seconds=60,
+        now=101.0,
+    )
+    blocked_preflight = limiter.check(
+        "account:alice",
+        limit=1,
+        window_seconds=60,
+        now=102.0,
+        consume=False,
+    )
+
+    assert preflight.allowed and preflight.remaining == 1
+    assert first_failure.allowed and first_failure.remaining == 0
+    assert not blocked_preflight.allowed
+
+
+def test_limiter_clear_removes_failure_history():
+    limiter = InMemoryRateLimiter()
+    limiter.check("account:alice", limit=1, window_seconds=60, now=1.0)
+    assert not limiter.check(
+        "account:alice",
+        limit=1,
+        window_seconds=60,
+        now=2.0,
+        consume=False,
+    ).allowed
+
+    limiter.clear("account:alice")
+
+    assert limiter.check(
+        "account:alice",
+        limit=1,
+        window_seconds=60,
+        now=3.0,
+        consume=False,
+    ).allowed
+
+
 def test_limiter_releases_capacity_after_window_expires():
     limiter = InMemoryRateLimiter()
 

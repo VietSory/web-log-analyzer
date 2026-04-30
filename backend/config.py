@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests: int = Field(default=120, ge=1, le=100_000)
     auth_rate_limit_requests: int = Field(default=10, ge=1, le=10_000)
+    auth_account_failure_limit: int = Field(default=5, ge=1, le=1_000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
 
     cors_origins: list[str] = ["http://localhost:8501"]
@@ -65,6 +66,10 @@ class Settings(BaseSettings):
         if self.auth_rate_limit_requests > self.rate_limit_requests:
             raise ValueError(
                 "AUTH_RATE_LIMIT_REQUESTS must not exceed RATE_LIMIT_REQUESTS"
+            )
+        if self.auth_account_failure_limit > self.auth_rate_limit_requests:
+            raise ValueError(
+                "AUTH_ACCOUNT_FAILURE_LIMIT must not exceed AUTH_RATE_LIMIT_REQUESTS"
             )
 
         if self.cors_allow_credentials:

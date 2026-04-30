@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 import logging
 from pathlib import Path
 from time import perf_counter
@@ -25,6 +26,13 @@ _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 _rate_limiter = InMemoryRateLimiter()
 
 
+@dataclass(frozen=True, slots=True)
+class RateLimitPolicy:
+    key: str
+    limit: int
+    disclose_quota: bool
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
@@ -43,7 +51,7 @@ app.add_middleware(
 )
 
 
-def _rate_limit_policy(request: Request) -> tuple[str, int] | None:
+def _rate_limit_policy(request: Request) -> RateLimitPolicy | None:
     if not settings.rate_limit_enabled:
         return None
     if request.method == "OPTIONS" or request.url.path.startswith("/health/"):
@@ -51,13 +59,15 @@ def _rate_limit_policy(request: Request) -> tuple[str, int] | None:
 
     client_host = request.client.host if request.client else "unknown"
     if request.url.path.startswith("/api/auth/"):
-        return (
-            f"auth:{client_host}",
-            settings.auth_rate_limit_requests,
+        return RateLimitPolicy(
+            key=f"auth:{client_host}",
+            limit=settings.auth_rate_limit_requests,
+            disclose_quota=False,
         )
-    return (
-        f"api:{client_host}",
-        settings.rate_limit_requests,
+    return RateLimitPolicy(
+        key=f"api:{client_host}",
+        limit=settings.rate_limit_requests,
+        disclose_quota=True,
     )
 
 
@@ -82,10 +92,9 @@ async def request_context(request: Request, call_next):
     policy = _rate_limit_policy(request)
     decision: RateLimitDecision | None = None
     if policy is not None:
-        key, limit = policy
         decision = _rate_limiter.check(
-            key,
-            limit=limit,
+            policy.key,
+            limit=policy.limit,
             window_seconds=settings.rate_limit_window_seconds,
         )
         if not decision.allowed:
@@ -97,11 +106,10 @@ async def request_context(request: Request, call_next):
                 request_id,
                 duration_ms,
             )
-            headers = {
-                **_rate_limit_headers(decision),
-                "Retry-After": str(decision.retry_after_seconds),
-                "X-Request-ID": request_id,
-            }
+            headers = {"X-Request-ID": request_id}
+            if policy.disclose_quota:
+                headers.update(_rate_limit_headers(decision))
+                headers["Retry-After"] = str(decision.retry_after_seconds)
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={"detail": "Too many requests", "request_id": request_id},
@@ -123,7 +131,7 @@ async def request_context(request: Request, call_next):
 
     duration_ms = round((perf_counter() - started_at) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
-    if decision is not None:
+    if decision is not None and policy is not None and policy.disclose_quota:
         for header_name, header_value in _rate_limit_headers(decision).items():
             response.headers[header_name] = header_value
 
