@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     auth_account_failure_limit: int = Field(default=5, ge=1, le=1_000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
 
+    otel_enabled: bool = False
+    otel_service_name: str = Field(
+        default="web-log-analyzer-backend",
+        min_length=1,
+        max_length=128,
+    )
+
     cors_origins: list[str] = ["http://localhost:8501"]
     cors_allow_credentials: bool = True
     cors_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
