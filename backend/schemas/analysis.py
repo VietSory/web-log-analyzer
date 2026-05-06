@@ -74,6 +74,28 @@ class AnalysisResponse(BaseModel):
         return self
 
 
+class ServerLogAnalysisResponse(BaseModel):
+    status: Literal["success"] = "success"
+    log_id: str
+    log_status: Literal["safe", "warning"]
+    is_anomaly: bool
+    anomalies: list[AnalysisFinding]
+    analysis: AnalysisResponse
+    message: str
+
+    @model_validator(mode="after")
+    def validate_compatibility_fields(self) -> "ServerLogAnalysisResponse":
+        has_findings = bool(self.analysis.findings)
+        if self.is_anomaly != has_findings:
+            raise ValueError("is_anomaly must match analysis findings")
+        if self.anomalies != self.analysis.findings:
+            raise ValueError("anomalies compatibility field must mirror analysis findings")
+        expected_status = "warning" if has_findings else "safe"
+        if self.log_status != expected_status:
+            raise ValueError("log_status must match analysis findings")
+        return self
+
+
 def empty_risk_summary() -> dict[str, Any]:
     return {
         "overall_risk_score": 0,
