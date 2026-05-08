@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,7 +67,14 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
             contents TEXT NOT NULL,
             FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
         );
+        '''
+    )
 
+
+def _create_legacy_scan_schema(connection: sqlite3.Connection) -> None:
+    """Create the normalized legacy scan tables only while migrating old databases."""
+    connection.executescript(
+        '''
         CREATE TABLE IF NOT EXISTS scan_history (
             id TEXT PRIMARY KEY,
             owner_id TEXT,
@@ -93,6 +99,16 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
             FOREIGN KEY(history_id) REFERENCES scan_history(id) ON DELETE CASCADE
         );
         '''
+    )
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        is not None
     )
 
 
@@ -131,7 +147,6 @@ def _migrate_legacy_password_storage(connection: sqlite3.Connection) -> None:
 
     for row in rows:
         stored_value = row["password_hash"]
-
         if (
             row["username"] == "admin"
             and row["fullname"] == "Admin User"
@@ -155,6 +170,11 @@ def _table_rows(connection: sqlite3.Connection, table_name: str) -> list[dict]:
 
 
 def _needs_scan_table_rebuild(connection: sqlite3.Connection) -> bool:
+    if not _table_exists(connection, "scan_history"):
+        return False
+    if not _table_exists(connection, "scan_threats"):
+        return False
+
     history_columns = {
         row["name"]: (row["type"] or "").upper()
         for row in connection.execute("PRAGMA table_info(scan_history)").fetchall()
@@ -207,7 +227,7 @@ def _migrate_legacy_scan_tables(connection: sqlite3.Connection) -> None:
 
     connection.execute("DROP TABLE scan_threats")
     connection.execute("DROP TABLE scan_history")
-    _create_current_schema(connection)
+    _create_legacy_scan_schema(connection)
 
     history_id_map: dict[object, str] = {}
     for row in old_history:
@@ -283,10 +303,6 @@ def _create_indexes(connection: sqlite3.Connection) -> None:
             ON servers(owner_id);
         CREATE INDEX IF NOT EXISTS idx_logs_server_id
             ON logs(server_id);
-        CREATE INDEX IF NOT EXISTS idx_scan_history_owner_date
-            ON scan_history(owner_id, scan_date DESC);
-        CREATE INDEX IF NOT EXISTS idx_scan_threats_history_id
-            ON scan_threats(history_id);
         '''
     )
 
@@ -320,133 +336,6 @@ def init_db(database_path: str | Path | None = None) -> None:
 
 def generate_uuid() -> str:
     return str(uuid4())
-
-
-def save_manual_report(filename, stats, threats, owner_id=None):
-    connection = get_db_connection()
-    history_id = generate_uuid()
-
-    try:
-        with connection:
-            connection.execute(
-                '''
-                INSERT INTO scan_history (
-                    id, owner_id, filename, scan_date, total_requests,
-                    unique_ips, error_rate, traffic_data, status_data
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''',
-                (
-                    history_id,
-                    owner_id,
-                    filename,
-                    _utc_now(),
-                    stats["total_requests"],
-                    stats["unique_ips"],
-                    stats["error_rate"],
-                    json.dumps(stats.get("traffic_chart", {})),
-                    json.dumps(stats.get("status_distribution", {})),
-                ),
-            )
-
-            if threats:
-                connection.executemany(
-                    '''
-                    INSERT INTO scan_threats (
-                        id, history_id, ip, severity, time, details,
-                        reconstruction_error
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    [
-                        (
-                            generate_uuid(),
-                            history_id,
-                            threat.get("ip"),
-                            threat.get("severity", "unknown"),
-                            threat.get("time"),
-                            threat.get("details"),
-                            threat.get("reconstruction_error"),
-                        )
-                        for threat in threats
-                    ],
-                )
-    finally:
-        connection.close()
-
-    return history_id
-
-
-def get_all_history(owner_id=None):
-    connection = get_db_connection()
-    try:
-        rows = connection.execute(
-            '''
-            SELECT id, filename, scan_date, total_requests, error_rate
-            FROM scan_history
-            WHERE owner_id = ?
-            ORDER BY scan_date DESC, id DESC
-            ''',
-            (owner_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        connection.close()
-
-
-def get_scan_details(history_id):
-    connection = get_db_connection()
-    try:
-        history = connection.execute(
-            "SELECT * FROM scan_history WHERE id = ?",
-            (history_id,),
-        ).fetchone()
-        if history is None:
-            return None
-
-        threats = connection.execute(
-            "SELECT * FROM scan_threats WHERE history_id = ?",
-            (history_id,),
-        ).fetchall()
-
-        result = dict(history)
-        result["traffic_data"] = json.loads(result["traffic_data"] or "{}")
-        result["status_data"] = json.loads(result["status_data"] or "{}")
-        result["threats"] = [dict(row) for row in threats]
-        return result
-    finally:
-        connection.close()
-
-
-def delete_scan_history(history_id):
-    connection = get_db_connection()
-    try:
-        with connection:
-            connection.execute(
-                "DELETE FROM scan_threats WHERE history_id = ?",
-                (history_id,),
-            )
-            cursor = connection.execute(
-                "DELETE FROM scan_history WHERE id = ?",
-                (history_id,),
-            )
-        return cursor.rowcount > 0
-    finally:
-        connection.close()
-
-
-def clear_all_data():
-    connection = get_db_connection()
-    try:
-        with connection:
-            connection.execute("DELETE FROM scan_threats")
-            connection.execute("DELETE FROM scan_history")
-            connection.execute("DELETE FROM logs")
-            connection.execute("DELETE FROM servers")
-            connection.execute("DELETE FROM users")
-        return True
-    finally:
-        connection.close()
 
 
 def create_user(fullname, username, password_hash):
