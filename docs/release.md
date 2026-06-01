@@ -1,78 +1,98 @@
-# Release and Publishing Runbook
+# Release Runbook
 
 ## Release invariants
 
-`main` is the publish target, not the development workspace. Product work is prepared and reviewed on `portfolio-rebuild-workspace`. That branch must never be merged directly into `main` because the final portfolio history is reconstructed from `docs/replay-manifest.json` with planned author and committer dates.
+A release is cut only from a revision that has passed the repository's quality and security gates. `main` is the publish branch; feature or maintenance branches are reviewed and merged only after their final tree has been verified.
 
-Bookkeeping-only commits that modify the replay manifest or engineering audit notes are workspace metadata. They are explicitly excluded from the replay set and must not recursively list themselves as product commits.
+The application ships source code and configuration, not generated runtime state. Local SQLite databases, uploads, caches, training inputs, and generated ML artifacts must remain outside Git unless a release process explicitly promotes an artifact through a controlled channel.
 
 ## Pre-release gate
 
-Before creating the dated history:
+Before publishing a release:
 
-1. Confirm the workspace branch is based on the recorded original base commit and inspect every commit after that base.
-2. Confirm every intended product commit appears exactly once in `docs/replay-manifest.json`, in dependency order, with workspace SHA, commit message, planned Asia/Bangkok author date, planned committer date, rationale, and verification notes.
-3. Confirm bookkeeping-only commits are excluded from replay.
-4. Run the current backend compile, Ruff, pytest/coverage, dependency-audit, repository scan, container build/scan, and SBOM workflows. Investigate failures rather than bypassing gates.
-5. Review generated model policy: generated `.keras`, joblib, threshold, local training data, uploads, SQLite state, caches, and secrets must not be tracked.
-6. Review README, architecture, threat model, benchmark methodology, and this runbook against the actual final code.
+1. Confirm the working tree is clean and the release candidate is based on the expected `main` revision.
+2. Run Python compilation, Ruff, pytest/coverage, dependency audit, repository scanning, container builds/scans, and SBOM generation. Investigate failures instead of bypassing gates.
+3. Review the README, architecture, threat model, benchmark methodology, environment examples, Dockerfiles, Compose configuration, and dependency pins against the candidate code.
+4. Confirm production configuration uses a unique `AUTH_SECRET_KEY`, explicit CORS origins, persistent data storage, and a trusted model artifact bundle when ML inference is enabled.
+5. Confirm generated `.keras`, joblib, metadata outputs, local training data, uploads, SQLite state, caches, secrets, and temporary scan output are not tracked.
+6. Review dependency, base-image, and GitHub Action pin updates for provenance and expected security impact.
 
-A green CI run is necessary but not sufficient; the final replayed branch must be tested again after reconstruction.
+A green CI run is necessary but does not replace a maintainer review of the final diff and runtime configuration.
 
-## Reconstruct the dated branch
+## Local verification
 
-Perform the replay in a clean local clone with Git available so author and committer dates can be controlled explicitly.
-
-1. Fetch the repository and verify the expected `main`, workspace HEAD, and recorded base SHA.
-2. Create the final dated branch from the original base commit recorded by the manifest, never from the workspace HEAD.
-3. For each manifest product entry in order:
-   - apply that workspace commit with `git cherry-pick --no-commit <workspace-sha>` or an equivalent patch application;
-   - inspect the staged diff and ensure it matches the intended product change;
-   - create the commit with the manifest message and user GitHub-linked author identity;
-   - set both `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` to the manifest timestamps.
-4. Do not replay manifest/audit bookkeeping commits.
-5. Do not create empty commits to fill contribution days.
-
-If a patch no longer applies cleanly, stop that replay step and investigate the manifest/product ordering. Do not silently resolve conflicts by accepting whichever side is convenient.
-
-## Verify reconstructed history
-
-Before pushing the dated branch, verify all of the following locally:
+From the repository root, run:
 
 ```bash
-git log --format=fuller --reverse <base>..HEAD
-git diff --stat <base>..HEAD
-git status --short
+python -m compileall -q backend frontend
+ruff check backend frontend
+cd backend
+pytest -q --cov=. --cov-report=term-missing
 ```
 
-Then verify:
+When Docker is available, also validate the deployment profile:
 
-- every replayed commit has the intended message, author identity, author date, and committer date;
-- timestamps are monotonically coherent with the planned development history;
-- no bookkeeping-only workspace commits appear;
-- the final product tree is equivalent to the workspace product tree, excluding only designated bookkeeping files;
-- no generated/runtime artifacts or secrets became tracked during replay;
-- compile, lint, backend tests, and relevant security/static checks pass on the dated branch;
-- Docker/Compose configuration still validates and images build when Docker is available.
+```bash
+docker compose config
+docker compose build
+```
 
-For tree equivalence, compare file lists and content rather than relying only on equal commit counts. Commit SHAs are expected to differ because dates/parents differ.
+Start the stack with a non-default authentication secret and verify the health endpoints:
 
-## Publish sequence
+```bash
+export AUTH_SECRET_KEY="$(openssl rand -hex 32)"
+docker compose up -d
+curl --fail http://127.0.0.1:8000/health/live
+curl --fail http://127.0.0.1:8000/health/ready
+```
 
-1. Push the dated branch without force.
-2. Inspect the branch on GitHub: commit order, contribution attribution, Actions results, file tree, and security scan results.
-3. Only after those checks pass, fast-forward `main` to the verified dated branch.
-4. Do not force-push `main` unless an exceptional recovery requires it and the repository owner explicitly approves that action.
-5. Create a release tag only from the verified `main` commit.
+Exercise at least one authenticated upload/scan/report flow before tagging a release candidate intended for demonstration or deployment.
+
+## Security evidence
+
+The security workflow is expected to produce or enforce:
+
+- Python dependency audit results;
+- repository vulnerability, secret, and misconfiguration scanning;
+- backend and frontend container vulnerability scans;
+- SARIF uploads for code-scanning visibility;
+- CycloneDX dependency and image SBOM artifacts.
+
+High/critical findings that trip an enforced gate must be investigated. Do not convert an enforcement step to `continue-on-error` merely to make a release green. If a finding is accepted, document the rationale and compensating controls in the release record.
 
 ## Model artifacts
 
-Model files are generated release inputs, not source files. A production model bundle must be built from a documented training input and command, preserve its generated `metadata.json`, and be transferred through a controlled release/artifact channel. Runtime loading verifies schema and SHA-256 consistency, but release operators remain responsible for provenance of the bundle itself.
+Model files are generated release inputs rather than source files. Build the bundle from a documented training input and command. Preserve the generated `metadata.json`, including schema, training configuration, threshold calibration, evaluation values, runtime versions, and artifact hashes.
+
+Runtime hash validation proves consistency with the metadata bundle; it does not establish publisher authenticity. Distribute model artifacts only through a trusted release/artifact channel. Never load model bundles supplied by end users because TensorFlow/joblib deserialization is not a safe untrusted-input boundary.
+
+## Publish sequence
+
+1. Record the current `main` SHA and the release-candidate SHA.
+2. Ensure required CI and security workflows succeeded on the exact release candidate.
+3. Merge or fast-forward the reviewed candidate according to the repository's branch policy.
+4. Re-check the resulting `main` SHA and workflow status.
+5. Create the version tag from that verified `main` commit.
+6. Attach release notes and any approved binary/model artifacts through the release channel rather than committing generated state to source control.
+
+Do not rewrite a published shared branch as a routine release operation. Prefer a normal corrective commit and follow-up release when a post-publish defect is found.
 
 ## Rollback
 
-Because `main` is updated only after the dated branch has been independently verified, the previous `main` SHA should be recorded before the final fast-forward. If a post-publish issue is found, prefer a normal corrective commit/release or an explicit branch rollback plan; do not rewrite published history casually.
+Keep the pre-release `main` SHA in the release record. For an application defect, revert the offending change or deploy the last known-good release according to the environment's deployment mechanism. For a credential or signing-secret incident, rotate the affected secret independently of source rollback.
+
+Database migrations in this project are forward application migrations. Before a production-like upgrade with important data, take an external backup of the SQLite database and uploaded files. Source rollback alone is not a database recovery strategy.
 
 ## Release evidence
 
-Keep the following with the release record when available: final `main` SHA, dated-branch SHA, CI/security run links, coverage artifact, dependency/image SBOMs, SARIF/code-scanning status, container image digest, model metadata digest, benchmark environment/result artifact, and any known limitations accepted for that release.
+Keep the following with the release record when available:
+
+- final `main` and tag SHAs;
+- CI/security run identifiers;
+- coverage artifact;
+- dependency and image SBOMs;
+- SARIF/code-scanning status;
+- built image digest(s);
+- model metadata and artifact digests;
+- benchmark environment/results;
+- accepted limitations or security exceptions.
