@@ -74,13 +74,15 @@ Because ordinary access logs do not provide trustworthy anomaly labels, the proj
 │   ├── core/              # auth, parser, detection, ML, risk, uploads, rate limits
 │   ├── models/            # README only; generated model bundle is ignored
 │   ├── routers/           # FastAPI endpoints
+│   ├── schemas/           # typed request/response contracts
+│   ├── services/          # analysis/statistics orchestration
 │   ├── tests/             # backend regression/security tests
 │   ├── config.py          # typed Pydantic settings
 │   ├── database.py        # SQLite schema, migrations, persistence
 │   ├── main.py            # FastAPI application
 │   └── train_model.py     # deterministic offline training CLI
 ├── frontend/              # Streamlit client
-├── docs/                  # architecture, threat model, benchmark, release/replay docs
+├── docs/                  # architecture, threat model, benchmark, release docs
 ├── .github/workflows/     # quality and supply-chain security pipelines
 ├── compose.yaml
 └── README.md
@@ -190,11 +192,9 @@ SQLite is intentional for the current portfolio deployment profile. The backend 
 
 For multi-host production, replace local filesystem state and process-local rate limiting with shared infrastructure and select a database appropriate to the required concurrency and durability model.
 
-## Release history reconstruction
+## Release
 
-This repository uses `portfolio-rebuild-workspace` only as an engineering workspace. The final dated portfolio history is produced from `docs/replay-manifest.json`; bookkeeping-only manifest/audit commits are not replayed. The workspace branch is never merged directly into `main`.
-
-See [Release and Publishing Runbook](docs/release.md) for the verified replay and publication procedure.
+Use the [Release Runbook](docs/release.md) for local verification, security evidence, model-artifact handling, publishing, and rollback expectations. A release candidate should be published only after CI and security workflows succeed on the exact revision being released.
 
 ## Current limitations
 
