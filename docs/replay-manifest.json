@@ -87,6 +87,35 @@
         "validated upload settings environment overrides",
         "full browser-to-backend integration remains pending until a runnable checkout is available"
       ]
+    },
+    {
+      "workspace_sha": "3b00d0390ad8bcdc17601685e1922225a35b4c22",
+      "message": "security: hash stored user passwords",
+      "author_date": "2026-01-21T21:11:00+07:00",
+      "committer_date": "2026-01-21T21:11:00+07:00",
+      "rationale": "Add the Argon2 password-hashing runtime dependency before switching credential verification away from plaintext database comparisons.",
+      "verification": [
+        "reviewed dependency-only diff",
+        "reviewed FastAPI security documentation recommending Argon2 password hashing",
+        "reviewed OWASP Password Storage Cheat Sheet Argon2id guidance",
+        "verified argon2-cffi 25.1.0 is available in the execution environment"
+      ]
+    },
+    {
+      "workspace_sha": "b4c315743f54336febae116ecc707fe4db82c93e",
+      "message": "security: verify Argon2 user credentials",
+      "author_date": "2026-01-22T20:27:00+07:00",
+      "committer_date": "2026-01-22T20:27:00+07:00",
+      "rationale": "Hash newly registered passwords with Argon2id, verify credentials against stored hashes instead of SQL plaintext equality, support transparent rehashing, and validate account input at the API boundary.",
+      "verification": [
+        "reviewed OWASP Argon2id minimum parameters and NIST SP 800-63B-4 single-factor password length guidance",
+        "reviewed argon2-cffi high-level PasswordHasher documentation",
+        "reviewed product diff line-by-line",
+        "executed isolated password security suite: 3 passed",
+        "validated username pattern and registration password length rejection cases",
+        "confirmed invalid/plaintext stored values fail closed during credential verification",
+        "legacy default admin seeding in database.py remains an explicit follow-up blocker and is not considered resolved by this commit"
+      ]
     }
   ]
 }
