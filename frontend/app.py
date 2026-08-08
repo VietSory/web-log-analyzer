@@ -3,7 +3,13 @@ import time
 import requests
 import streamlit as st
 
-from utils import API_URL, get_display_filename, init_session_state, load_custom_css
+from utils import (
+    api_request,
+    clear_auth_session,
+    get_display_filename,
+    init_session_state,
+    load_custom_css,
+)
 from views import (
     auth,
     dashboard,
@@ -41,9 +47,7 @@ with st.sidebar:
 
     st.write(f"👤 **Xin chào:** {st.session_state.get('username', 'User')}")
     if st.button("🚪 Đăng xuất", use_container_width=True, type="secondary"):
-        st.session_state["authenticated"] = False
-        st.session_state["username"] = None
-        st.session_state["user_id"] = None
+        clear_auth_session()
         st.rerun()
 
     st.divider()
@@ -67,18 +71,16 @@ with st.sidebar:
                 files = {"file": (file_obj.name, file_obj, "text/plain")}
 
                 try:
-                    response = requests.post(
-                        f"{API_URL}/api/upload",
+                    response = api_request(
+                        "POST",
+                        "/api/upload",
                         files=files,
                         timeout=30,
                     )
                     if response.status_code == 200:
                         payload = response.json()
                         storage_name = payload["filename"]
-                        display_name = payload.get(
-                            "original_filename",
-                            file_obj.name,
-                        )
+                        display_name = payload.get("original_filename", file_obj.name)
 
                         if storage_name not in st.session_state["uploaded_file_list"]:
                             st.session_state["uploaded_file_list"].append(storage_name)
@@ -103,9 +105,9 @@ with st.sidebar:
             if newly_uploaded:
                 st.session_state["current_filename"] = newly_uploaded[0]
                 try:
-                    stats_response = requests.get(
-                        f"{API_URL}/api/stats/{newly_uploaded[0]}",
-                        timeout=15,
+                    stats_response = api_request(
+                        "GET",
+                        f"/api/stats/{newly_uploaded[0]}",
                     )
                     if stats_response.status_code == 200:
                         st.session_state["stats_data"] = stats_response.json()
@@ -130,9 +132,9 @@ with st.sidebar:
             st.session_state["current_filename"] = selected_file
             with st.spinner("Đang chuyển file..."):
                 try:
-                    stats_response = requests.get(
-                        f"{API_URL}/api/stats/{selected_file}",
-                        timeout=15,
+                    stats_response = api_request(
+                        "GET",
+                        f"/api/stats/{selected_file}",
                     )
                     if stats_response.status_code == 200:
                         st.session_state["stats_data"] = stats_response.json()
