@@ -24,6 +24,11 @@ backend/training_data.csv
 *.sqlite3
 *.log
 
+# Generated ML artifacts
+backend/models/*
+!backend/models/README.md
+backend/artifacts/
+
 # Local/editor artifacts
 *.backup
 .DS_Store
