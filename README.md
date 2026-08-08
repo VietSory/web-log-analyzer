@@ -1,134 +1,205 @@
-# 🛡️ AI Web Log Analyzer - Hệ thống Giám sát An ninh Log
+# Web Log Analyzer
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
-![TensorFlow](https://img.shields.io/badge/AI-TensorFlow%2FKeras-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white)
-![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
+A security-focused web access-log analysis system built with FastAPI, Streamlit, deterministic anomaly detection, explainable rules, and auditable risk scoring.
 
-> **Giải pháp phân tích Log máy chủ web tự động sử dụng mô hình Deep Learning (Autoencoder) kết hợp với luật (Rule-based) để phát hiện bất thường trong log từ đó định danh các cuộc tấn công mạng.**
+The project analyzes Apache/Nginx access logs after ingestion. It is **not** an inline WAF and does not claim to prove compromise from an anomaly score. Findings are intended to help an operator prioritize investigation.
 
-## 📑 Mục lục
-- [Giới thiệu](#-giới-thiệu)
-- [Tính năng nổi bật](#-tính-năng-nổi-bật)
-- [Cấu trúc dự án](#-cấu-trúc-dự-án)
-- [Cài đặt & Khởi chạy](#-cài-đặt--khởi-chạy)
-- [Hướng dẫn sử dụng](#-hướng-dẫn-sử-dụng)
-- [Công nghệ sử dụng](#-công-nghệ-sử-dụng)
+## What it does
 
----
+- Parses Apache/Nginx common and combined access logs into a stable typed schema, including IPv4 and IPv6.
+- Rejects unsafe uploads and stores files under generated owner-scoped identifiers.
+- Detects explainable web attack indicators such as traversal, SQL-injection-like payloads, XSS-like payloads, and sensitive endpoint probing.
+- Optionally runs a deterministic TensorFlow/Keras autoencoder for unsupervised anomaly signals.
+- Combines rule and ML findings on a shared 0-100 risk scale while preserving evidence and detection source.
+- Stores users, servers, scan history, and findings in migrated SQLite persistence with foreign keys and WAL mode.
+- Uses Argon2id password hashing and JWT bearer authentication with owner-scoped authorization.
+- Provides health/readiness endpoints, request correlation IDs, CORS constraints, upload/request validation, and configurable API rate limiting.
+- Ships hardened non-root Docker images and a Compose stack.
+- Runs CI, lint, tests/coverage, dependency audit, repository/container scanning, CycloneDX SBOM generation, and SARIF upload.
 
-## 📖 Giới thiệu
-
-**Web Log Analyzer** là công cụ hỗ trợ Quản trị viên hệ thống (SysAdmin) trong việc giám sát nhật ký truy cập (Access Logs).
-Khác với các công cụ truyền thống chỉ dựa trên luật (Signature-based), hệ thống này áp dụng phương pháp tiếp cận lai (**Hybrid Approach**):
-1.  **AI (Autoencoder):** Học hành vi bình thường để phát hiện các bất thường chưa biết (Unknown Threats/Zero-day).
----
-
-## 🚀 Tính năng nổi bật
-
-* **📂 Quản lý Đa nguồn dữ liệu:** Hỗ trợ upload và xử lý hàng loạt file log cùng lúc. Chuyển đổi linh hoạt giữa các file để phân tích.
-* **🧠 AI Anomaly Detection:** Tự động tính toán điểm bất thường (Loss Score) cho từng request bằng mô hình Autoencoder.
-* **📊 Dashboard Trực quan:** Biểu đồ Time-series, phân bố mã lỗi (Status Codes) và thống kê nhanh.
-* **📜 Thư viện Báo cáo (History):**
-    * Lưu trữ kết quả quét vào cơ sở dữ liệu.
-    * Xem lại chi tiết, so sánh và xóa báo cáo cũ.
-    * Tìm kiếm/Lọc báo cáo theo tên file hoặc ngày tháng.
-* **🎨 Giao diện Hiện đại:** UI tối ưu với Dark Mode, thanh tiến trình rủi ro và Badges cảnh báo.
-
----
-
-## 📂 Cấu trúc dự án
+## Architecture
 
 ```text
-web-log-analyzer/
-├── backend/                  # Xử lý Logic & API (FastAPI)
-│   ├── core/
-│   │   ├── ml_engine.py      # AI Class (Load model, Detect anomalies)
-│   │   └── parser.py         # Log Parser & Attack Classification
-│   ├── models/               # Chứa file model đã train (.keras, .pkl)
-│   ├── routers/              # API Endpoints (Scan, Upload, Stats, History)
-│   ├── uploads/              # Thư mục lưu trữ file tạm
-│   ├── database.py           # Quản lý SQLite (CRUD History)
-│   ├── main.py               # Entry point của Backend
-|   ├── requirements.txt      # Các thư viện phụ thuộc
-|   ├── train_model.py        # File để chạy train model AI tạo ra các file cần thiết
-│   └── weblog_analyzer.db    # SQLite Database
-├── frontend/                 # Giao diện người dùng (Streamlit)
-│   ├── assets/               # Tài nguyên tĩnh (CSS, Images)
-│   ├── views/                # Các trang chức năng
-│   │   ├── home.py           # Trang chủ
-│   │   ├── dashboard.py      # Thống kê
-│   │   ├── ml_inspector.py   # Màn hình quét AI (AI Monitor)
-│   │   ├── history.py        # Quản lý lịch sử báo cáo
-│   │   └── inspector.py      # Soi log thô
-│   ├── app.py                # Entry point của Frontend
-|   ├── requirements.txt      # Các thư viện phụ thuộc
-│   └── utils.py              # Hàm tiện ích chung
-├── .gitignore                 # Bỏ qua các file dev không muốn up lên git
-└── README.md                 # Tài liệu hướng dẫn
+Browser
+  |
+  v
+Streamlit frontend :8501
+  |
+  | HTTP + Bearer token
+  v
+FastAPI backend :8000
+  |        |        |
+  |        |        +--> optional SMTP alerts
+  |        +----------> verified ML artifact bundle
+  +-------------------> SQLite + owner-scoped upload storage
 ```
-## 🛠 Cài đặt & Khởi chạy
-**1. Yêu cầu môi trường**
-Python: Phiên bản 3.10 trở lên.
 
-Thư viện: Cài đặt theo file requirements.txt.
+The backend treats rule detection and ML inference as independent sources. If the ML artifact bundle is unavailable, rule analysis can still run in a degraded mode rather than silently substituting a fake threshold.
+
+See [Architecture](docs/architecture.md) and [Threat Model](docs/threat-model.md) for design boundaries and residual risks.
+
+## Detection model
+
+### Explainable rules
+
+Rule findings include a stable rule ID, severity, evidence, source IP, timestamp, and request path. Current coverage includes encoded/plain path traversal, SQL-injection-like request payloads, XSS-like payloads, and sensitive endpoint probes.
+
+### ML anomaly detection
+
+Training is offline and chronological:
+
+```text
+70% train -> 15% validation -> 15% test
+```
+
+Preprocessing is fitted on the training partition only and explicitly handles unseen categories. TensorFlow deterministic operations and a fixed seed are enabled, rows are not shuffled, and the anomaly threshold is calibrated from validation reconstruction-error quantiles.
+
+Generated artifacts are deliberately excluded from Git. A valid bundle contains:
+
+```text
+model.keras
+preprocessor.joblib
+metadata.json
+```
+
+`metadata.json` records feature/schema versioning, input SHA-256, split sizes, training options, threshold calibration, reconstruction-error evaluation, runtime versions, and artifact digests. Runtime loading validates the schema and SHA-256 digests before deserializing the bundle.
+
+Because ordinary access logs do not provide trustworthy anomaly labels, the project does not fabricate supervised precision/recall metrics. See [Benchmark Methodology](docs/benchmark.md) for how model and performance claims should be evaluated.
+
+## Repository layout
+
+```text
+.
+├── backend/
+│   ├── core/              # auth, parser, detection, ML, risk, uploads, rate limits
+│   ├── models/            # README only; generated model bundle is ignored
+│   ├── routers/           # FastAPI endpoints
+│   ├── tests/             # backend regression/security tests
+│   ├── config.py          # typed Pydantic settings
+│   ├── database.py        # SQLite schema, migrations, persistence
+│   ├── main.py            # FastAPI application
+│   └── train_model.py     # deterministic offline training CLI
+├── frontend/              # Streamlit client
+├── docs/                  # architecture, threat model, benchmark, release/replay docs
+├── .github/workflows/     # quality and supply-chain security pipelines
+├── compose.yaml
+└── README.md
+```
+
+## Local development
+
+Python 3.12 is the tested project baseline. Direct dependencies are pinned in each service requirements file.
+
+### Backend
 
 ```bash
-pip install -r requirements.txt
-```
-**2. Khởi chạy các file model cần thiết**
-Mở terminal tại thư mục backend/:
-
-```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+cp backend/.env.example backend/.env
 cd backend
-python train_model.py
+uvicorn main:app --reload
 ```
 
-**3. Khởi chạy Backend (API Server)**
-Mở terminal tại thư mục backend/:
+For Windows PowerShell, activate the virtual environment with `.venv\Scripts\Activate.ps1`.
+
+The development `.env.example` contains a development-only JWT secret. Production configuration rejects the default development secret.
+
+### Frontend
+
+From a separate shell:
 
 ```bash
-cd backend
-python main.py
-```
-
-Server sẽ khởi động tại: http://127.0.0.1:8000 và tự động khởi tạo Database.
-
-**4. Khởi chạy Frontend (User Interface)**
-Mở một terminal khác tại thư mục gốc dự án:
-
-```bash
+source .venv/bin/activate
+python -m pip install -r frontend/requirements.txt
 cd frontend
 streamlit run app.py
 ```
-Giao diện sẽ tự động mở trên trình duyệt tại: http://localhost:8501
 
-## 📖 Hướng dẫn sử dụng
+The frontend defaults to `http://127.0.0.1:8000`. Override it with `WEB_LOG_ANALYZER_API_URL`.
 
-### Upload Log Files
-Step 1: Vào Sidebar bên trái, chọn mục Upload Log Files  
-Step 2: Chọn hoặc kéo–thả một hoặc nhiều file log  
-Step 3: Nhấn 🚀 Xử lý để bắt đầu phân tích  
+## Train a local model bundle
 
-### Chọn File phân tích
-- Sử dụng Selectbox trong Sidebar để chọn file log cần làm việc (nếu upload nhiều file)
+Training expects a raw Apache/Nginx access log and at least enough parsed rows for chronological train/validation/test partitions.
 
-### Xem Tổng quan (Dashboard)
-- Xem biểu đồ traffic theo thời gian và tỷ lệ lỗi để nắm bắt tình hình hệ thống
+```bash
+cd backend
+python train_model.py \
+  --data /path/to/access.log \
+  --output models \
+  --epochs 50 \
+  --batch-size 128 \
+  --seed 42 \
+  --threshold-quantile 0.995
+```
 
-### Phát hiện Tấn công (AI Monitor)
-Step 1: Chuyển sang tab 🛡️ AI Monitor  
-Step 2: Nhấn 🔄 QUÉT NGAY để chạy AI kết hợp Rule-based detection  
-Step 3: Xem danh sách các request đáng ngờ hoặc nguy hiểm được phát hiện  
+Do not commit the generated files. Production/release environments should receive a separately controlled and verified artifact bundle.
 
-### Lưu trữ & Tra cứu
-Step 1: Nhấn 💾 Lưu vào Lịch sử để lưu kết quả phân tích  
-Step 2: Truy cập tab 📜 History để tìm kiếm, xem lại hoặc xóa các báo cáo cũ  
+## Docker Compose
 
-## 💻 Công nghệ sử dụng
-- Backend: FastAPI (Python)
-- Frontend: Streamlit
-- AI Core: TensorFlow / Keras (Autoencoder Neural Network)
-- Preprocessing: Scikit-learn (MinMaxScaler, LabelEncoder)
-- Database: SQLite
+Set a non-default authentication secret before starting the stack:
+
+```bash
+export AUTH_SECRET_KEY="$(openssl rand -hex 32)"
+docker compose up --build
+```
+
+Services:
+
+- frontend: `http://localhost:8501`
+- backend API: `http://localhost:8000`
+- liveness: `http://localhost:8000/health/live`
+- readiness: `http://localhost:8000/health/ready`
+
+The containers run non-root, drop Linux capabilities, use `no-new-privileges`, and use read-only root filesystems with explicit writable mounts/tmpfs. The frontend waits for backend readiness before startup.
+
+The bundled rate limiter is process-local. A multi-replica production deployment must add a shared edge/distributed limiter instead of treating it as a cross-node control.
+
+## Verification
+
+Run backend checks locally from the repository root:
+
+```bash
+python -m compileall -q backend frontend
+ruff check backend frontend
+cd backend
+pytest -q --cov=. --cov-report=term-missing
+```
+
+GitHub Actions additionally performs Python dependency auditing, repository vulnerability/secret/misconfiguration scanning, container scanning, SARIF upload, and CycloneDX SBOM generation.
+
+## Security model
+
+Important design choices include:
+
+- Argon2id password hashes; no plaintext credential comparison.
+- Explicit JWT algorithm and production-secret validation.
+- Owner-scoped file/history/server authorization.
+- Generated upload storage IDs and bounded streaming uploads.
+- Explicit CORS origins/methods/headers when credentials are enabled.
+- Bounded Pydantic request fields and API rate limits.
+- HTML escaping in warning emails.
+- Versioned/checksummed ML artifacts and no silent inference fallback.
+- Pinned container base-image digest and pinned third-party security workflow actions.
+
+Read [Threat Model](docs/threat-model.md) before deploying or extending a trust boundary.
+
+## Persistence and scaling boundaries
+
+SQLite is intentional for the current portfolio deployment profile. The backend enables foreign keys, busy timeout, WAL mode, migrations, and indexes. It is not presented as a horizontally distributed database.
+
+For multi-host production, replace local filesystem state and process-local rate limiting with shared infrastructure and select a database appropriate to the required concurrency and durability model.
+
+## Release history reconstruction
+
+This repository uses `portfolio-rebuild-workspace` only as an engineering workspace. The final dated portfolio history is produced from `docs/replay-manifest.json`; bookkeeping-only manifest/audit commits are not replayed. The workspace branch is never merged directly into `main`.
+
+See [Release and Publishing Runbook](docs/release.md) for the verified replay and publication procedure.
+
+## Current limitations
+
+- Rule signatures are intentionally focused and do not replace a maintained WAF/IDS ruleset.
+- Unsupervised reconstruction error is an investigation signal, not a ground-truth verdict.
+- Model artifact hashes provide integrity relative to metadata but not publisher authenticity; release signing/attestation is a future hardening step.
+- The bundled Compose profile is a single-node deployment model.
+- Representative labeled security evaluation data is still required before making supervised accuracy claims.
