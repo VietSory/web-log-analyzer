@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from core.security import hash_password, password_hash_needs_rehash, verify_password
-from database import create_user, get_user_by_username, set_user_by_username_password
+from database import create_user, get_user_by_username, set_user_password_hash
 
 
 router = APIRouter()
@@ -22,14 +22,14 @@ class RegisterRequest(BaseModel):
 @router.post("/auth/login")
 def login(request: LoginRequest):
     user = get_user_by_username(request.username)
-    if not user or not verify_password(request.password, user["password"]):
+    if not user or not verify_password(request.password, user["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
-    if password_hash_needs_rehash(user["password"]):
-        set_user_by_username_password(request.username, hash_password(request.password))
+    if password_hash_needs_rehash(user["password_hash"]):
+        set_user_password_hash(request.username, hash_password(request.password))
 
     return {
         "message": "Login successful",
