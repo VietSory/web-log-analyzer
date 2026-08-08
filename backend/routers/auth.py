@@ -1,12 +1,16 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from config import get_settings
 from core.auth import create_access_token
+from core.rate_limit import InMemoryRateLimiter
 from core.security import hash_password, password_hash_needs_rehash, verify_password
 from database import create_user, get_user_by_username, set_user_password_hash
 
 
 router = APIRouter()
+settings = get_settings()
+_account_failure_limiter = InMemoryRateLimiter()
 
 
 class LoginRequest(BaseModel):
@@ -27,16 +31,52 @@ class LoginResponse(BaseModel):
     username: str
 
 
+def _account_limit_key(username: str) -> str:
+    return f"login-account:{username.casefold()}"
+
+
+def _account_rate_limited(username: str) -> bool:
+    if not settings.rate_limit_enabled:
+        return False
+    return not _account_failure_limiter.check(
+        _account_limit_key(username),
+        limit=settings.auth_account_failure_limit,
+        window_seconds=settings.rate_limit_window_seconds,
+        consume=False,
+    ).allowed
+
+
+def _record_login_failure(username: str) -> None:
+    if settings.rate_limit_enabled:
+        _account_failure_limiter.check(
+            _account_limit_key(username),
+            limit=settings.auth_account_failure_limit,
+            window_seconds=settings.rate_limit_window_seconds,
+        )
+
+
+def _clear_login_failures(username: str) -> None:
+    _account_failure_limiter.clear(_account_limit_key(username))
+
+
 @router.post("/auth/login", response_model=LoginResponse)
 def login(request: LoginRequest):
+    if _account_rate_limited(request.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts",
+        )
+
     user = get_user_by_username(request.username)
     if not user or not verify_password(request.password, user["password_hash"]):
+        _record_login_failure(request.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    _clear_login_failures(request.username)
     if password_hash_needs_rehash(user["password_hash"]):
         set_user_password_hash(request.username, hash_password(request.password))
 
