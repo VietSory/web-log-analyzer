@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_reload: bool = False
 
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_json: bool = True
+
     database_path: str = "weblog_analyzer.db"
 
     upload_dir: Path = Path("uploads")
