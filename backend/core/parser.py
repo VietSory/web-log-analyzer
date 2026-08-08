@@ -53,7 +53,7 @@ class LogEvent:
 
 
 def _unescape_log_value(value: str) -> str:
-    return value.replace(r'\"', '"').replace(r"\\", "\")
+    return value.replace(r'\"', '"').replace(r"\\", "\\")
 
 
 def _split_request(request: str) -> tuple[str, str, str]:
