@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -55,7 +56,7 @@ def save_history(payload: SavePayload, current_user: CurrentUser):
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="Invalid report payload") from exc
-    except Exception as exc:
+    except (sqlite3.Error, OSError) as exc:
         raise HTTPException(status_code=500, detail="Could not save report") from exc
 
     return {"status": "success", "history_id": report_id, "id": report_id}
