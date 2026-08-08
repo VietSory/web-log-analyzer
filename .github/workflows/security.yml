@@ -177,12 +177,19 @@ jobs:
           output: sbom/frontend-image.cdx.json
           exit-code: "0"
 
-      - name: Upload container SARIF to code scanning
+      - name: Upload backend container SARIF to code scanning
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
-          sarif_file: sarif
-          category: trivy-containers
+          sarif_file: sarif/backend-container.sarif
+          category: trivy-container-backend
+
+      - name: Upload frontend container SARIF to code scanning
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: sarif/frontend-container.sarif
+          category: trivy-container-frontend
 
       - name: Retain container SARIF
         if: always()
