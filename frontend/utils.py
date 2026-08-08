@@ -17,7 +17,9 @@ def init_session_state():
         "last_scan_time": "Chưa quét",
         "threats_list": [],
         "current_view": None,
+        "uploaded_file_list": [],
         "uploaded_file_labels": {},
+        "uploads_synced_for_user": None,
         "access_token": None,
     }
     for key, value in defaults.items():
@@ -28,6 +30,10 @@ def init_session_state():
 def clear_auth_session() -> None:
     for key in ("authenticated", "username", "user_id", "access_token"):
         st.session_state[key] = False if key == "authenticated" else None
+    st.session_state["uploads_synced_for_user"] = None
+    st.session_state["uploaded_file_list"] = []
+    st.session_state["uploaded_file_labels"] = {}
+    st.session_state["current_filename"] = None
 
 
 def api_request(method: str, path: str, **kwargs: Any) -> requests.Response:
@@ -49,6 +55,30 @@ def api_request(method: str, path: str, **kwargs: Any) -> requests.Response:
         clear_auth_session()
 
     return response
+
+
+def sync_uploaded_files() -> None:
+    user_id = st.session_state.get("user_id")
+    if not user_id or not st.session_state.get("access_token"):
+        return
+    if st.session_state.get("uploads_synced_for_user") == user_id:
+        return
+
+    response = api_request("GET", "/api/uploads")
+    response.raise_for_status()
+    records = response.json()
+
+    storage_names = [record["storage_name"] for record in records]
+    labels = {
+        record["storage_name"]: record["original_filename"]
+        for record in records
+    }
+    st.session_state["uploaded_file_list"] = storage_names
+    st.session_state["uploaded_file_labels"] = labels
+    st.session_state["uploads_synced_for_user"] = user_id
+
+    if st.session_state.get("current_filename") not in storage_names:
+        st.session_state["current_filename"] = storage_names[0] if storage_names else None
 
 
 def get_display_filename(storage_name: str | None) -> str:

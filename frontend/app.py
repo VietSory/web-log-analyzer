@@ -9,6 +9,7 @@ from utils import (
     get_display_filename,
     init_session_state,
     load_custom_css,
+    sync_uploaded_files,
 )
 from views import (
     auth,
@@ -39,8 +40,12 @@ if not st.session_state.get("authenticated", False):
     auth.render_auth_page()
     st.stop()
 
-if "uploaded_file_list" not in st.session_state:
-    st.session_state["uploaded_file_list"] = []
+try:
+    sync_uploaded_files()
+except requests.RequestException as exc:
+    st.warning(f"Không thể đồng bộ danh sách upload: {exc}")
+    if not st.session_state.get("authenticated", False):
+        st.rerun()
 
 with st.sidebar:
     st.header("🎛️ Control Panel")
@@ -83,7 +88,7 @@ with st.sidebar:
                         display_name = payload.get("original_filename", file_obj.name)
 
                         if storage_name not in st.session_state["uploaded_file_list"]:
-                            st.session_state["uploaded_file_list"].append(storage_name)
+                            st.session_state["uploaded_file_list"].insert(0, storage_name)
                         st.session_state["uploaded_file_labels"][storage_name] = display_name
                         newly_uploaded.append(storage_name)
                     else:
@@ -130,6 +135,10 @@ with st.sidebar:
 
         if selected_file != current_filename:
             st.session_state["current_filename"] = selected_file
+            st.session_state["analysis_data"] = None
+            st.session_state["threats_list"] = []
+            st.session_state.pop("raw_logs", None)
+            st.session_state.pop("last_log_file", None)
             with st.spinner("Đang chuyển file..."):
                 try:
                     stats_response = api_request(
@@ -140,8 +149,34 @@ with st.sidebar:
                         st.session_state["stats_data"] = stats_response.json()
                 except requests.RequestException as exc:
                     st.error(f"Không thể tải thống kê: {exc}")
-                st.session_state["threats_list"] = []
                 st.rerun()
+
+        if st.button(
+            "🗑️ Xóa file đang mở",
+            type="secondary",
+            use_container_width=True,
+        ):
+            try:
+                delete_response = api_request(
+                    "DELETE",
+                    f"/api/uploads/{selected_file}",
+                )
+            except requests.RequestException as exc:
+                st.error(f"Không thể xóa file: {exc}")
+            else:
+                if delete_response.status_code == 200:
+                    st.session_state["uploaded_file_list"].remove(selected_file)
+                    st.session_state["uploaded_file_labels"].pop(selected_file, None)
+                    remaining = st.session_state["uploaded_file_list"]
+                    st.session_state["current_filename"] = remaining[0] if remaining else None
+                    st.session_state["stats_data"] = None
+                    st.session_state["analysis_data"] = None
+                    st.session_state["threats_list"] = []
+                    st.session_state.pop("raw_logs", None)
+                    st.session_state.pop("last_log_file", None)
+                    st.rerun()
+                else:
+                    st.error(f"Không thể xóa file: {delete_response.text}")
 
         menu_options = [
             "🏠 Home",
