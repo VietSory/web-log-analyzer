@@ -42,17 +42,18 @@ jobs:
         run: python -m pip install --disable-pip-version-check pip-audit==2.10.1
 
       - name: Generate dependency SBOMs
-        continue-on-error: true
         run: |
           mkdir -p artifacts
+          status=0
           pip-audit -r backend/requirements.txt \
             --progress-spinner off \
             --format cyclonedx-json \
-            --output artifacts/backend-dependencies.cdx.json
+            --output artifacts/backend-dependencies.cdx.json || status=1
           pip-audit -r frontend/requirements.txt \
             --progress-spinner off \
             --format cyclonedx-json \
-            --output artifacts/frontend-dependencies.cdx.json
+            --output artifacts/frontend-dependencies.cdx.json || status=1
+          echo "sbom_audit_status=$status" >> "$GITHUB_ENV"
 
       - name: Upload dependency SBOMs
         if: always()
@@ -65,7 +66,7 @@ jobs:
 
       - name: Enforce dependency audit
         run: |
-          status=0
+          status="${sbom_audit_status:-0}"
           pip-audit -r backend/requirements.txt --progress-spinner off || status=1
           pip-audit -r frontend/requirements.txt --progress-spinner off || status=1
           exit "$status"
@@ -96,12 +97,21 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-      - name: Upload repository SARIF
+      - name: Upload repository SARIF to code scanning
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           sarif_file: sarif/repository.sarif
           category: trivy-repository
+
+      - name: Retain repository SARIF
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: repository-sarif
+          path: sarif/repository.sarif
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Enforce repository scan
         if: steps.repo_scan.outcome == 'failure'
@@ -164,12 +174,21 @@ jobs:
           output: sbom/frontend-image.cdx.json
           exit-code: "0"
 
-      - name: Upload container SARIF
+      - name: Upload container SARIF to code scanning
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
         with:
           sarif_file: sarif
           category: trivy-containers
+
+      - name: Retain container SARIF
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: container-sarif
+          path: sarif/*.sarif
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload image SBOMs
         if: always()
