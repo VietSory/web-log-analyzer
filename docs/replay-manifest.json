@@ -55,6 +55,21 @@
         "validated wildcard CORS rejection when credentials are enabled",
         "remote clone/runtime suite not executed because the container environment could not resolve github.com"
       ]
+    },
+    {
+      "workspace_sha": "cfa70903a9315744b97ea9acfbd59eea6fcd45c4",
+      "message": "refactor: normalize access log parsing",
+      "author_date": "2026-01-16T21:02:00+07:00",
+      "committer_date": "2026-01-16T21:02:00+07:00",
+      "rationale": "Normalize Apache/Nginx common and combined access logs into a stable schema, add IPv6 validation, preserve request protocol information, and stop swallowing file I/O failures.",
+      "verification": [
+        "reviewed official Apache HTTP Server common/combined log format documentation",
+        "reviewed official nginx ngx_http_log_module combined format documentation",
+        "reviewed Python ipaddress IPv4/IPv6 validation documentation",
+        "reviewed one-commit diff line-by-line",
+        "executed isolated parser test suite: 6 passed",
+        "verified IPv4, IPv6, common, combined, malformed timestamp, invalid address, mixed-file, and empty-schema cases"
+      ]
     }
   ]
 }
