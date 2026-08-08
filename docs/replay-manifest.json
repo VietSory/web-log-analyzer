@@ -70,6 +70,23 @@
         "executed isolated parser test suite: 6 passed",
         "verified IPv4, IPv6, common, combined, malformed timestamp, invalid address, mixed-file, and empty-schema cases"
       ]
+    },
+    {
+      "workspace_sha": "47a9d55a6ef054c99615d0e9207f331a227a952c",
+      "message": "security: harden log upload storage",
+      "author_date": "2026-01-19T20:48:00+07:00",
+      "committer_date": "2026-01-19T20:48:00+07:00",
+      "rationale": "Replace user-controlled filesystem names with generated storage identifiers, restrict accepted log extensions, enforce configured size limits during persistence, reject binary NUL content, validate all later file lookups, and preserve original names only for display/history metadata.",
+      "verification": [
+        "reviewed OWASP File Upload Cheat Sheet and OWASP Input Validation guidance",
+        "reviewed FastAPI UploadFile and Starlette request-file documentation",
+        "reviewed the full product diff after commit",
+        "executed Python bytecode compilation for all changed Python modules",
+        "executed isolated upload storage suite: 6 passed",
+        "verified path traversal, double-extension, unsupported-extension, declared-size, streaming-size, NUL-content, partial-file cleanup, generated-name, and stored-path cases",
+        "validated upload settings environment overrides",
+        "full browser-to-backend integration remains pending until a runnable checkout is available"
+      ]
     }
   ]
 }
