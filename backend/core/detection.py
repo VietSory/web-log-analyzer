@@ -15,7 +15,8 @@ _SEVERITY_POINTS = {
 }
 
 _SQLI_PATTERN = re.compile(
-    r"(?:\bunion\s+(?:all\s+)?select\b|\bselect\b.{0,80}\bfrom\b|"
+    r"(?:\bunion\s+(?:all\s+)?select\b|"
+    r"\bselect\s+[^/\r\n?&]{1,80}\s+from\b|"
     r"\b(?:or|and)\b\s+['\"0-9][^\r\n]{0,40}=|"
     r"\b(?:sleep|benchmark)\s*\()",
     re.IGNORECASE,
