@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "base_commit": "8b0e3c6b9dfe1c0e6f7f41cc6c2d98683ad06e2c",
   "workspace_branch": "portfolio-rebuild-workspace",
   "final_branch": "portfolio-rebuild-dated",
@@ -9,113 +9,71 @@
     "email": "121284939+VietSory@users.noreply.github.com"
   },
   "bookkeeping_commits_are_replayed": false,
+  "excluded_workspace_commits": [
+    {"workspace_sha": "ec56c23ca8854326ecf9331f951720b794f03e3d", "reason": "replay manifest bookkeeping"},
+    {"workspace_sha": "66612435a094745506517961ab1ffb6e01c9e5cd", "reason": "replay manifest bookkeeping"},
+    {"workspace_sha": "de7cbe6393b4dd8260c00909652c519930a6fc01", "reason": "replay manifest bookkeeping"},
+    {"workspace_sha": "c5c77dce894c0e82ed34fee148c6620ac7e93683", "reason": "replay manifest bookkeeping"},
+    {"workspace_sha": "99696503f7e04c95e9f24ac36d053c687d30f352", "reason": "replay manifest bookkeeping"}
+  ],
   "entries": [
-    {
-      "workspace_sha": "470f5fd7b90cce2c333367faa6d0744fabefa631",
-      "message": "chore: stop tracking Python cache artifacts",
-      "author_date": "2026-01-05T20:41:00+07:00",
-      "committer_date": "2026-01-05T20:41:00+07:00",
-      "rationale": "Prevent generated Python cache files from being versioned and expand ignore rules for local-only artifacts.",
-      "verification": ["reviewed resulting tree", "reviewed .gitignore on workspace branch", "no runtime behavior changed"]
-    },
-    {
-      "workspace_sha": "0d914592f1337a46b10819116c49ed3d8a53fe63",
-      "message": "chore: remove remaining Python cache artifacts",
-      "author_date": "2026-01-07T21:13:00+07:00",
-      "committer_date": "2026-01-07T21:13:00+07:00",
-      "rationale": "Remove additional tracked bytecode artifacts under backend and frontend paths.",
-      "verification": ["reviewed resulting tree", "no runtime behavior changed"]
-    },
-    {
-      "workspace_sha": "7897c01f9d02be4804af2fba2b36c1dc9791fbad",
-      "message": "chore: remove frontend cache artifacts",
-      "author_date": "2026-01-09T19:54:00+07:00",
-      "committer_date": "2026-01-09T19:54:00+07:00",
-      "rationale": "Remove tracked frontend view bytecode from source control.",
-      "verification": ["reviewed resulting tree", "no runtime behavior changed"]
-    },
-    {
-      "workspace_sha": "b69acaf07d40c8fd4bcaf137345a0ddb79d10135",
-      "message": "chore: remove local runtime and backup artifacts",
-      "author_date": "2026-01-12T22:08:00+07:00",
-      "committer_date": "2026-01-12T22:08:00+07:00",
-      "rationale": "Remove the tracked local SQLite database and backup source file so repository state is reproducible and reviewable.",
-      "verification": ["reviewed resulting tree", "confirmed ignore rules cover database and backup artifacts", "no runtime behavior changed"]
-    },
-    {
-      "workspace_sha": "9b991e34876e6c72a85e03c6841eaeb897a75c3d",
-      "message": "refactor: add typed application settings",
-      "author_date": "2026-01-14T20:36:00+07:00",
-      "committer_date": "2026-01-14T20:36:00+07:00",
-      "rationale": "Introduce validated environment-backed application settings and replace credentialed wildcard CORS defaults with explicit origins, methods, and headers.",
-      "verification": [
-        "reviewed one-commit diff (4 files, 152 changed lines)",
-        "validated Settings defaults with Pydantic 2.13.4 / pydantic-settings 2.14.1",
-        "validated JSON list parsing from the .env example",
-        "validated wildcard CORS rejection when credentials are enabled",
-        "remote clone/runtime suite not executed because the container environment could not resolve github.com"
-      ]
-    },
-    {
-      "workspace_sha": "cfa70903a9315744b97ea9acfbd59eea6fcd45c4",
-      "message": "refactor: normalize access log parsing",
-      "author_date": "2026-01-16T21:02:00+07:00",
-      "committer_date": "2026-01-16T21:02:00+07:00",
-      "rationale": "Normalize Apache/Nginx common and combined access logs into a stable schema, add IPv6 validation, preserve request protocol information, and stop swallowing file I/O failures.",
-      "verification": [
-        "reviewed official Apache HTTP Server common/combined log format documentation",
-        "reviewed official nginx ngx_http_log_module combined format documentation",
-        "reviewed Python ipaddress IPv4/IPv6 validation documentation",
-        "reviewed one-commit diff line-by-line",
-        "executed isolated parser test suite: 6 passed",
-        "verified IPv4, IPv6, common, combined, malformed timestamp, invalid address, mixed-file, and empty-schema cases"
-      ]
-    },
-    {
-      "workspace_sha": "47a9d55a6ef054c99615d0e9207f331a227a952c",
-      "message": "security: harden log upload storage",
-      "author_date": "2026-01-19T20:48:00+07:00",
-      "committer_date": "2026-01-19T20:48:00+07:00",
-      "rationale": "Replace user-controlled filesystem names with generated storage identifiers, restrict accepted log extensions, enforce configured size limits during persistence, reject binary NUL content, validate all later file lookups, and preserve original names only for display/history metadata.",
-      "verification": [
-        "reviewed OWASP File Upload Cheat Sheet and OWASP Input Validation guidance",
-        "reviewed FastAPI UploadFile and Starlette request-file documentation",
-        "reviewed the full product diff after commit",
-        "executed Python bytecode compilation for all changed Python modules",
-        "executed isolated upload storage suite: 6 passed",
-        "verified path traversal, double-extension, unsupported-extension, declared-size, streaming-size, NUL-content, partial-file cleanup, generated-name, and stored-path cases",
-        "validated upload settings environment overrides",
-        "full browser-to-backend integration remains pending until a runnable checkout is available"
-      ]
-    },
-    {
-      "workspace_sha": "3b00d0390ad8bcdc17601685e1922225a35b4c22",
-      "message": "security: hash stored user passwords",
-      "author_date": "2026-01-21T21:11:00+07:00",
-      "committer_date": "2026-01-21T21:11:00+07:00",
-      "rationale": "Add the Argon2 password-hashing runtime dependency before switching credential verification away from plaintext database comparisons.",
-      "verification": [
-        "reviewed dependency-only diff",
-        "reviewed FastAPI security documentation recommending Argon2 password hashing",
-        "reviewed OWASP Password Storage Cheat Sheet Argon2id guidance",
-        "verified argon2-cffi 25.1.0 is available in the execution environment"
-      ]
-    },
-    {
-      "workspace_sha": "b4c315743f54336febae116ecc707fe4db82c93e",
-      "message": "security: verify Argon2 user credentials",
-      "author_date": "2026-01-22T20:27:00+07:00",
-      "committer_date": "2026-01-22T20:27:00+07:00",
-      "rationale": "Hash newly registered passwords with Argon2id, verify credentials against stored hashes instead of SQL plaintext equality, support transparent rehashing, and validate account input at the API boundary.",
-      "verification": [
-        "reviewed OWASP Argon2id minimum parameters and NIST SP 800-63B-4 single-factor password length guidance",
-        "reviewed argon2-cffi high-level PasswordHasher documentation",
-        "reviewed product diff line-by-line",
-        "executed isolated password security suite: 3 passed",
-        "validated username pattern and registration password length rejection cases",
-        "confirmed invalid/plaintext stored values fail closed during credential verification",
-        "legacy default admin seeding in database.py remains an explicit follow-up blocker and is not considered resolved by this commit"
-      ]
-    }
+    {"workspace_sha":"470f5fd7b90cce2c333367faa6d0744fabefa631","message":"chore: stop tracking Python cache artifacts","author_date":"2026-01-05T20:41:00+07:00","committer_date":"2026-01-05T20:41:00+07:00","rationale":"Remove generated cache state from source control.","verification":["workspace tree reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"0d914592f1337a46b10819116c49ed3d8a53fe63","message":"chore: remove remaining Python cache artifacts","author_date":"2026-01-07T21:13:00+07:00","committer_date":"2026-01-07T21:13:00+07:00","rationale":"Complete Python bytecode cleanup.","verification":["workspace tree reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"7897c01f9d02be4804af2fba2b36c1dc9791fbad","message":"chore: remove frontend cache artifacts","author_date":"2026-01-09T19:54:00+07:00","committer_date":"2026-01-09T19:54:00+07:00","rationale":"Remove frontend generated cache state.","verification":["workspace tree reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"b69acaf07d40c8fd4bcaf137345a0ddb79d10135","message":"chore: remove local runtime and backup artifacts","author_date":"2026-01-12T22:08:00+07:00","committer_date":"2026-01-12T22:08:00+07:00","rationale":"Remove local database and backup files from version control.","verification":["workspace tree reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"9b991e34876e6c72a85e03c6841eaeb897a75c3d","message":"refactor: add typed application settings","author_date":"2026-01-14T20:36:00+07:00","committer_date":"2026-01-14T20:36:00+07:00","rationale":"Centralize validated environment-backed configuration.","verification":["settings validation exercised","covered by final workspace CI"]},
+    {"workspace_sha":"cfa70903a9315744b97ea9acfbd59eea6fcd45c4","message":"refactor: normalize access log parsing","author_date":"2026-01-16T21:02:00+07:00","committer_date":"2026-01-16T21:02:00+07:00","rationale":"Normalize common/combined access logs with IPv4 and IPv6 support.","verification":["parser tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"47a9d55a6ef054c99615d0e9207f331a227a952c","message":"security: harden log upload storage","author_date":"2026-01-19T19:47:00+07:00","committer_date":"2026-01-19T19:47:00+07:00","rationale":"Validate uploads and use server-generated storage names.","verification":["upload storage tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"3b00d03997fbc03ec2a094baee72c5c1b7e33132","message":"security: add Argon2 password hashing","author_date":"2026-01-21T21:26:00+07:00","committer_date":"2026-01-21T21:26:00+07:00","rationale":"Add Argon2id password hashing dependency and support.","verification":["security tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"b4c315743f54336febae116ecc707fe4db82c93e","message":"security: hash credentials with Argon2id","author_date":"2026-01-23T20:18:00+07:00","committer_date":"2026-01-23T20:18:00+07:00","rationale":"Eliminate plaintext credential verification and storage.","verification":["credential tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"a1b075c02c99a15933eb2dc5fcbb1ac8d86fe847","message":"refactor: harden sqlite persistence initialization","author_date":"2026-01-26T22:11:00+07:00","committer_date":"2026-01-26T22:11:00+07:00","rationale":"Make SQLite initialization explicit, transactional, and migration-aware.","verification":["database tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"dac935d193c465c310277942e4e6738a90f2a257","message":"test: cover sqlite persistence invariants","author_date":"2026-01-28T19:32:00+07:00","committer_date":"2026-01-28T19:32:00+07:00","rationale":"Lock database migration and integrity behavior with tests.","verification":["database invariant tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"69509183c50dba1eede848e7bf5d669f532cc130","message":"security: issue signed access tokens","author_date":"2026-02-02T20:57:00+07:00","committer_date":"2026-02-02T20:57:00+07:00","rationale":"Introduce signed short-lived bearer access tokens.","verification":["authentication tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"23c493302bdcee314cba00c69b411e3bbc9f83e0","message":"security: enforce authenticated ownership boundaries","author_date":"2026-02-04T20:41:00+07:00","committer_date":"2026-02-04T20:41:00+07:00","rationale":"Enforce owner-scoped authorization across protected resources.","verification":["authorization tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"890da72cfbd87365252cfcdd5a8f0fed1b7d556c","message":"refactor: propagate authenticated api client through frontend","author_date":"2026-02-06T21:13:00+07:00","committer_date":"2026-02-06T21:13:00+07:00","rationale":"Propagate bearer authentication through the frontend API client.","verification":["frontend call sites reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"abc92a1af16bb071dfd3629d538af2f038b3903d","message":"security: isolate uploaded logs by authenticated user","author_date":"2026-02-09T19:54:00+07:00","committer_date":"2026-02-09T19:54:00+07:00","rationale":"Separate uploaded log storage by authenticated owner.","verification":["owner-isolation tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"633f3525ad7faf22c99318aee4f2ec170384f324","message":"chore: replace committed model artifacts with reproducible runtime outputs","author_date":"2026-02-11T22:08:00+07:00","committer_date":"2026-02-11T22:08:00+07:00","rationale":"Stop versioning opaque generated ML artifacts.","verification":["repository tree reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"2455a9f09ee0e7bf3ac8e9ab7857c9b21b7702e1","message":"refactor: train deterministic anomaly model pipeline","author_date":"2026-02-13T20:36:00+07:00","committer_date":"2026-02-13T20:36:00+07:00","rationale":"Make anomaly training deterministic with proper data splits and metadata.","verification":["training code reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"07c3942229f744634ba5a45d83b014191225d38a","message":"refactor: centralize stable anomaly feature extraction","author_date":"2026-02-16T21:02:00+07:00","committer_date":"2026-02-16T21:02:00+07:00","rationale":"Create a stable numeric feature schema for anomaly analysis.","verification":["feature tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"caa5e7f5ee06f2690a2f3c6219c9fc3ed2ecf050","message":"refactor: centralize stable anomaly feature extraction","author_date":"2026-02-18T19:47:00+07:00","committer_date":"2026-02-18T19:47:00+07:00","rationale":"Separate chronological ML preprocessing and feature extraction from training.","verification":["ML feature tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"c69618e84effeb0cf78b9becb2753ac765f4ba59","message":"refactor: replace ordinal identifiers with behavioral ml features","author_date":"2026-02-20T21:26:00+07:00","committer_date":"2026-02-20T21:26:00+07:00","rationale":"Remove unstable ordinal identifier features from anomaly modeling.","verification":["ML feature tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"b5a0e7d9513846581ea965797ef3751e0597cecc","message":"refactor: validate versioned anomaly artifacts at inference","author_date":"2026-02-23T20:18:00+07:00","committer_date":"2026-02-23T20:18:00+07:00","rationale":"Validate model schema, threshold, hashes, and dimensions before inference.","verification":["ML engine tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"0a50f7a88cd8d48bbdd956ebebf5799a5d2dc6fc","message":"refactor: centralize ml runtime lifecycle","author_date":"2026-02-25T22:11:00+07:00","committer_date":"2026-02-25T22:11:00+07:00","rationale":"Centralize ML model lifecycle and readiness state.","verification":["ML runtime tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"70c4ce56134ae1b2c5b2fb8e4485b71133d78609","message":"feat: add explainable rule-based threat detection","author_date":"2026-02-27T19:32:00+07:00","committer_date":"2026-02-27T19:32:00+07:00","rationale":"Add explainable web attack detection rules with evidence.","verification":["detection tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"874c9ce0b71fa4d0b0a0c594f3d9ccce8d6ea30e","message":"feat: unify rule and ml risk scoring","author_date":"2026-03-02T20:57:00+07:00","committer_date":"2026-03-02T20:57:00+07:00","rationale":"Combine rule and ML findings into one bounded risk model.","verification":["risk tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"51fb4f9ab9f5725f6e58aae2f595c80461738a66","message":"fix: preserve matched evidence in rule detections","author_date":"2026-03-04T20:41:00+07:00","committer_date":"2026-03-04T20:41:00+07:00","rationale":"Preserve concise matched evidence for explainability.","verification":["detection regression tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"a0716a1f3ad11aa389deb426448177656ffd1df7","message":"feat: add request identifiers and health endpoints","author_date":"2026-03-06T21:13:00+07:00","committer_date":"2026-03-06T21:13:00+07:00","rationale":"Add request correlation plus liveness/readiness endpoints.","verification":["health tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"86c755a2b8e0318710d8d9443fb328398b335920","message":"test: add application health checks","author_date":"2026-03-09T19:54:00+07:00","committer_date":"2026-03-09T19:54:00+07:00","rationale":"Lock health endpoint behavior with automated tests.","verification":["health tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"e541ce489261452422092abba58dc124ece5fcfb","message":"ci: pin third party actions to immutable commits","author_date":"2026-03-11T22:08:00+07:00","committer_date":"2026-03-11T22:08:00+07:00","rationale":"Pin GitHub Actions dependencies to immutable revisions.","verification":["workflow reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"64999e4a1021affa7ea2cf3e998e51af9415f241","message":"ci: add backend quality pipeline","author_date":"2026-03-13T20:36:00+07:00","committer_date":"2026-03-13T20:36:00+07:00","rationale":"Add compile, lint, tests, and coverage CI.","verification":["GitHub Actions CI passed"]},
+    {"workspace_sha":"e98cdb1b65fb8ee0925955ac948c3021cdd4f9a3","message":"chore: pin runtime and development dependencies","author_date":"2026-03-16T21:02:00+07:00","committer_date":"2026-03-16T21:02:00+07:00","rationale":"Pin dependency versions for reproducible environments.","verification":["dependency installation exercised in CI"]},
+    {"workspace_sha":"1ea38069b52425a48702364c358f4f06515224ab","message":"build: add hardened container development stack","author_date":"2026-03-18T19:47:00+07:00","committer_date":"2026-03-18T19:47:00+07:00","rationale":"Containerize backend/frontend with hardened Compose defaults.","verification":["container builds exercised in security CI"]},
+    {"workspace_sha":"ee66e35fb0f8a2952663c7d598b1dc6ec05bf7f5","message":"build: pin container base image digests","author_date":"2026-03-20T21:26:00+07:00","committer_date":"2026-03-20T21:26:00+07:00","rationale":"Pin base images by digest for reproducibility.","verification":["container builds exercised in security CI"]},
+    {"workspace_sha":"645d3046e006d68f35ce6c2fbddc78519aaf2aa8","message":"ci: add dependency container and sbom security scans","author_date":"2026-03-23T20:18:00+07:00","committer_date":"2026-03-23T20:18:00+07:00","rationale":"Add dependency audit, Trivy, CycloneDX SBOM, and SARIF workflows.","verification":["GitHub Actions security workflow exercised"]},
+    {"workspace_sha":"0cf917285d9b4748aa5d0f28e21d60bf6ee16de2","message":"docs: add benchmark methodology","author_date":"2026-03-25T22:11:00+07:00","committer_date":"2026-03-25T22:11:00+07:00","rationale":"Document reproducible performance and quality measurement rules.","verification":["documentation reviewed"]},
+    {"workspace_sha":"baabc7ca8b886aac5724beb01d04964a64f8b0d2","message":"docs: add release replay workflow","author_date":"2026-03-27T19:32:00+07:00","committer_date":"2026-03-27T19:32:00+07:00","rationale":"Document guarded history replay and release verification.","verification":["documentation reviewed"]},
+    {"workspace_sha":"0bfb993b28feb36f98accbc4dae199f9e8a3d2fb","message":"docs: describe production architecture and operations","author_date":"2026-03-30T20:57:00+07:00","committer_date":"2026-03-30T20:57:00+07:00","rationale":"Document architecture, security boundaries, and operations.","verification":["documentation reviewed"]},
+    {"workspace_sha":"4d8ae5e72f9a5f9f15f7af5642af0bd07c84c087","message":"feat: persist structured analysis reports","author_date":"2026-04-01T20:41:00+07:00","committer_date":"2026-04-01T20:41:00+07:00","rationale":"Persist typed reports and individual findings transactionally.","verification":["report-store tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"a8d77d42b068b89eac6fe6bf204d3d5c22b0b5b4","message":"ci: retain security scan evidence before enforcement","author_date":"2026-04-03T21:13:00+07:00","committer_date":"2026-04-03T21:13:00+07:00","rationale":"Retain scan evidence even when security gates fail.","verification":["security workflow exercised"]},
+    {"workspace_sha":"805776b60b3907068967fa181a06914b26f2ea3a","message":"refactor: expose structured report history API","author_date":"2026-04-06T19:54:00+07:00","committer_date":"2026-04-06T19:54:00+07:00","rationale":"Expose owner-scoped structured report APIs.","verification":["authorization and report tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"449489c1a88cd114885ea710344577ebeee624ac","message":"ci: fix container Trivy action inputs","author_date":"2026-04-08T22:08:00+07:00","committer_date":"2026-04-08T22:08:00+07:00","rationale":"Correct container security scanner workflow inputs.","verification":["security workflow exercised"]},
+    {"workspace_sha":"8353f11bc47e7a37e9b841e0419113a9c8cef55a","message":"ci: add container image health validation","author_date":"2026-04-10T20:36:00+07:00","committer_date":"2026-04-10T20:36:00+07:00","rationale":"Validate built images and health contracts in CI.","verification":["container health workflow exercised"]},
+    {"workspace_sha":"79e6d5c606f7da111937a7f27d5b414ef2b7c39f","message":"refactor: degrade gracefully when ml artifacts are unavailable","author_date":"2026-04-13T21:02:00+07:00","committer_date":"2026-04-13T21:02:00+07:00","rationale":"Keep deterministic rule analysis available when ML artifacts are absent.","verification":["analysis degradation tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"8ddae1614b422d2e2c397ae983ab08046ba52352","message":"test: cover authentication route behavior","author_date":"2026-04-15T19:47:00+07:00","committer_date":"2026-04-15T19:47:00+07:00","rationale":"Lock authentication route success and failure behavior.","verification":["authentication route tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"178026b9da4cf43c036271ab73d7cc7c673af5dd","message":"refactor: surface structured analysis reports in frontend","author_date":"2026-04-17T21:26:00+07:00","committer_date":"2026-04-17T21:26:00+07:00","rationale":"Render structured findings, risk, and degraded status in the UI.","verification":["frontend call sites reviewed","covered by final workspace CI"]},
+    {"workspace_sha":"c10d61b29d9a35bf31cca5793277965487c2cf1d","message":"security: add api rate limits and request tracing","author_date":"2026-04-20T20:18:00+07:00","committer_date":"2026-04-20T20:18:00+07:00","rationale":"Add API abuse controls and request correlation.","verification":["rate-limit and request tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"f5f216710703b587a24308b3a31fb8114a78a2ef","message":"test: preserve escaped log fixture bytes","author_date":"2026-04-22T22:11:00+07:00","committer_date":"2026-04-22T22:11:00+07:00","rationale":"Preserve exact escaped bytes in parser regression fixtures.","verification":["parser tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"284c2ce5c7d68cff75558e3c30449d9736b10673","message":"security: add account-aware login throttling","author_date":"2026-04-24T19:32:00+07:00","committer_date":"2026-04-24T19:32:00+07:00","rationale":"Add account-aware login failure throttling alongside per-IP limits.","verification":["auth throttle tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"4d35211c22a1529e7155ad984bd89771171896ad","message":"feat: add OpenTelemetry tracing and metrics","author_date":"2026-04-27T20:57:00+07:00","committer_date":"2026-04-27T20:57:00+07:00","rationale":"Add optional OTLP tracing and metrics instrumentation.","verification":["observability tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"8dd2f07c6e4c2f4ed1ca882ddc63c68d2cfa927d","message":"refactor: emit structured trace-correlated logs","author_date":"2026-04-29T20:41:00+07:00","committer_date":"2026-04-29T20:41:00+07:00","rationale":"Emit JSON logs correlated with request and trace IDs.","verification":["logging tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"57236541db7ed590d3fb5abb26b27ba3f42a5f09","message":"refactor: extract typed analysis service layer","author_date":"2026-05-01T21:13:00+07:00","committer_date":"2026-05-01T21:13:00+07:00","rationale":"Move hybrid analysis orchestration behind typed service contracts.","verification":["analysis service tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"1c11c5ccf687b8de372eb2d476fe3f0252cdc48f","message":"refactor: unify server log analysis pipeline","author_date":"2026-05-04T19:54:00+07:00","committer_date":"2026-05-04T19:54:00+07:00","rationale":"Use the same hybrid analysis pipeline for server log ingestion.","verification":["server analysis tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"ddc5523d915cd361fadf89c485a6f633020538e3","message":"refactor: extract typed log statistics service","author_date":"2026-05-06T22:08:00+07:00","committer_date":"2026-05-06T22:08:00+07:00","rationale":"Move statistics computation behind typed service contracts.","verification":["statistics tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"db10eee571b6e97e4f95f39913cd6a9b1943a280","message":"feat: persist owner-scoped upload metadata","author_date":"2026-05-08T20:36:00+07:00","committer_date":"2026-05-08T20:36:00+07:00","rationale":"Persist upload metadata so user files survive frontend sessions.","verification":["upload-store tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"9809981fa1616e2795be19c596cdfbb2859dc8aa","message":"refactor: retire legacy scan persistence APIs","author_date":"2026-05-11T21:02:00+07:00","committer_date":"2026-05-11T21:02:00+07:00","rationale":"Remove obsolete scan persistence APIs after structured report migration.","verification":["database/report tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"910ea7c33c14325aec9c1a701d61a3ef3ba1baf4","message":"test: align readiness contract with telemetry status","author_date":"2026-05-13T19:47:00+07:00","committer_date":"2026-05-13T19:47:00+07:00","rationale":"Lock readiness output after telemetry integration.","verification":["health tests exercised","covered by final workspace CI"]},
+    {"workspace_sha":"5f984e0d9e66774ca36aeca0010142c4bdf44deb","message":"ci: use unique SARIF categories per container scan","author_date":"2026-05-18T21:26:00+07:00","committer_date":"2026-05-18T21:26:00+07:00","rationale":"Disambiguate backend and frontend SARIF analyses in code scanning.","verification":["GitHub Actions security workflow passed"]},
+    {"workspace_sha":"cba888c0a5bd797c231aa044944b96ce046f2634","message":"test: add deterministic detection benchmark harness","author_date":"2026-05-27T20:18:00+07:00","committer_date":"2026-05-27T20:18:00+07:00","rationale":"Add reproducible synthetic parser/rule regression benchmark output.","verification":["benchmark metric tests exercised","GitHub Actions CI passed"]},
+    {"workspace_sha":"82a98a8d57436ee7d9728d07f74b10f4c24d7ae2","message":"build: add guarded dated-history replay tool","author_date":"2026-05-29T22:11:00+07:00","committer_date":"2026-05-29T22:11:00+07:00","rationale":"Automate safe local replay with timestamp, identity, ancestry, and tree-equivalence guards.","verification":["replay manifest parser tests added","final replay tool validates every product commit before publishing"]}
   ]
 }
