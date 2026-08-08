@@ -6,3 +6,5 @@ numpy
 scikit-learn
 tensorflow
 joblib
+pydantic-settings
+python-dotenv
