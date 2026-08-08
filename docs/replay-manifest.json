@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "base_commit": "8b0e3c6b9dfe1c0e6f7f41cc6c2d98683ad06e2c",
+  "workspace_branch": "portfolio-rebuild-workspace",
+  "final_branch": "portfolio-rebuild-dated",
+  "timezone": "+07:00",
+  "author": {
+    "name": "Vietsory",
+    "email": "121284939+VietSory@users.noreply.github.com"
+  },
+  "bookkeeping_commits_are_replayed": false,
+  "entries": [
+    {
+      "workspace_sha": "470f5fd7b90cce2c333367faa6d0744fabefa631",
+      "message": "chore: stop tracking Python cache artifacts",
+      "author_date": "2026-01-05T20:41:00+07:00",
+      "committer_date": "2026-01-05T20:41:00+07:00",
+      "rationale": "Prevent generated Python cache files from being versioned and expand ignore rules for local-only artifacts.",
+      "verification": [
+        "reviewed resulting tree",
+        "reviewed .gitignore on workspace branch",
+        "no runtime behavior changed"
+      ]
+    },
+    {
+      "workspace_sha": "0d914592f1337a46b10819116c49ed3d8a53fe63",
+      "message": "chore: remove remaining Python cache artifacts",
+      "author_date": "2026-01-07T21:13:00+07:00",
+      "committer_date": "2026-01-07T21:13:00+07:00",
+      "rationale": "Remove additional tracked bytecode artifacts under backend and frontend paths.",
+      "verification": [
+        "reviewed resulting tree",
+        "no runtime behavior changed"
+      ]
+    },
+    {
+      "workspace_sha": "7897c01f9d02be4804af2fba2b36c1dc9791fbad",
+      "message": "chore: remove frontend cache artifacts",
+      "author_date": "2026-01-09T19:54:00+07:00",
+      "committer_date": "2026-01-09T19:54:00+07:00",
+      "rationale": "Remove tracked frontend view bytecode from source control.",
+      "verification": [
+        "reviewed resulting tree",
+        "no runtime behavior changed"
+      ]
+    },
+    {
+      "workspace_sha": "b69acaf07d40c8fd4bcaf137345a0ddb79d10135",
+      "message": "chore: remove local runtime and backup artifacts",
+      "author_date": "2026-01-12T22:08:00+07:00",
+      "committer_date": "2026-01-12T22:08:00+07:00",
+      "rationale": "Remove the tracked local SQLite database and backup source file so repository state is reproducible and reviewable.",
+      "verification": [
+        "reviewed resulting tree",
+        "confirmed ignore rules cover database and backup artifacts",
+        "no runtime behavior changed"
+      ]
+    }
+  ]
+}
