@@ -1,8 +1,10 @@
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from config import get_settings
+from core.auth import get_current_user
 from core.ml_engine import LogAnomalyDetector
 from core.parser import parse_log_file
 from core.upload_storage import UploadValidationError, resolve_upload_path
@@ -10,6 +12,7 @@ from core.upload_storage import UploadValidationError, resolve_upload_path
 
 router = APIRouter()
 settings = get_settings()
+CurrentUser = Annotated[dict, Depends(get_current_user)]
 
 ai_engine = LogAnomalyDetector(model_dir="models")
 print("⏳ Loading AI Model for Analyzer...")
@@ -32,7 +35,7 @@ def _get_uploaded_file(filename: str) -> Path:
 
 
 @router.post("/scan/{filename}")
-def scan_file(filename: str):
+def scan_file(filename: str, _current_user: CurrentUser):
     dataframe = parse_log_file(_get_uploaded_file(filename))
     if dataframe.empty:
         return {"threat_count": 0, "threats": []}
