@@ -22,6 +22,12 @@ class Settings(BaseSettings):
         le=100 * 1024 * 1024,
     )
 
+    auth_secret_key: SecretStr = SecretStr(
+        "dev-only-change-this-secret-at-least-32-bytes"
+    )
+    auth_algorithm: Literal["HS256"] = "HS256"
+    access_token_expire_minutes: int = Field(default=30, ge=5, le=1440)
+
     cors_origins: list[str] = ["http://localhost:8501"]
     cors_allow_credentials: bool = True
     cors_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
@@ -43,6 +49,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_sensitive_settings(self) -> "Settings":
+        secret = self.auth_secret_key.get_secret_value()
+        if len(secret.encode("utf-8")) < 32:
+            raise ValueError("AUTH_SECRET_KEY must contain at least 32 bytes")
+        if self.app_env == "production" and secret.startswith("dev-only-"):
+            raise ValueError("production requires a non-default AUTH_SECRET_KEY")
+
         if self.cors_allow_credentials:
             if "*" in self.cors_origins:
                 raise ValueError("CORS origins must be explicit when credentials are enabled")

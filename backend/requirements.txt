@@ -9,3 +9,4 @@ joblib
 pydantic-settings
 python-dotenv
 argon2-cffi>=25.1,<26
+PyJWT>=2.10,<3
