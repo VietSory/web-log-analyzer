@@ -14,7 +14,7 @@ def test_liveness_is_process_only():
     assert main.liveness() == {"status": "ok"}
 
 
-def test_readiness_reports_database_ready_and_model_degraded(tmp_path, monkeypatch):
+def test_readiness_reports_database_ready_and_optional_components(tmp_path, monkeypatch):
     database_path = tmp_path / "health.db"
 
     def connection_factory():
@@ -27,7 +27,11 @@ def test_readiness_reports_database_ready_and_model_degraded(tmp_path, monkeypat
 
     assert response == {
         "status": "ready",
-        "components": {"database": "ready", "ml_model": "unavailable"},
+        "components": {
+            "database": "ready",
+            "ml_model": "unavailable",
+            "telemetry": "disabled",
+        },
     }
 
 
