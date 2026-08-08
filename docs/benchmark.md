@@ -2,6 +2,18 @@
 
 Benchmarks in this repository are intended to make performance and model-quality claims reproducible. Do not publish throughput, latency, memory, or accuracy numbers unless the input, command, commit SHA, hardware, Python/library versions, and measurement method are recorded.
 
+## Deterministic regression harness
+
+A small synthetic rule-engine regression harness is included at `backend/benchmarks/benchmark_rules.py`. It is designed to catch parser/rule regressions and produce machine-readable JSON; it is **not** evidence of real-world detection efficacy.
+
+Run it from the backend directory:
+
+```bash
+python benchmarks/benchmark_rules.py --iterations 1000 --output benchmark.json
+```
+
+The output reports parser/rule throughput on that machine plus TP/FP/TN/FN, precision, recall, and F1 for the fixed synthetic fixture. CI tests the metric logic and fixture classification but deliberately does not enforce timing thresholds because hosted-runner performance varies.
+
 ## Surfaces to measure
 
 Measure parser/statistics throughput, rule-engine latency, ML inference latency, offline training cost, and HTTP API latency separately. Combining them into one throughput number hides the bottleneck.
