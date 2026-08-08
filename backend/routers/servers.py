@@ -10,8 +10,6 @@ from pydantic import BaseModel, Field
 
 from core.auth import get_current_user
 from core.mail_service import mail_service
-from core.ml_engine import InferenceError, ModelArtifactError
-from core.ml_runtime import get_anomaly_detector
 from database import (
     create_log,
     create_server,
@@ -20,6 +18,8 @@ from database import (
     get_server_logs,
     get_user_servers,
 )
+from schemas.analysis import ServerLogAnalysisResponse
+from services.analysis import analyze_dataframe
 
 
 router = APIRouter()
@@ -121,12 +121,15 @@ def get_server_stats_endpoint(server_id: str, current_user: CurrentUser):
     }
 
 
-@router.post("/servers/{server_id}/analyze")
+@router.post(
+    "/servers/{server_id}/analyze",
+    response_model=ServerLogAnalysisResponse,
+)
 def analyze_log_endpoint(
     server_id: str,
     request: LogAnalyzeRequest,
     current_user: CurrentUser,
-):
+) -> ServerLogAnalysisResponse:
     server = _owned_server(server_id, current_user)
     event_time = request.datetime or datetime.now(timezone.utc).isoformat(timespec="seconds")
     log_data = {
@@ -142,35 +145,24 @@ def analyze_log_endpoint(
         "source_format": "api",
     }
 
-    try:
-        anomalies = get_anomaly_detector().detect_anomalies(pd.DataFrame([log_data]))
-    except ModelArtifactError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI model is not available",
-        ) from exc
-    except InferenceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="AI inference failed",
-        ) from exc
-
-    log_status = "warning" if anomalies else "safe"
+    analysis = analyze_dataframe(pd.DataFrame([log_data]))
+    has_findings = bool(analysis.findings)
+    log_status = "warning" if has_findings else "safe"
     log_id = create_log(server_id, log_status, request.log_content)
 
-    if log_status == "warning":
+    if has_findings:
         mail_service.send_warning_alert(
             server_name=server.get("name", "Unknown Server"),
             server_id=server_id,
             log_content=request.log_content,
-            anomaly_details=anomalies,
+            anomaly_details=[finding.model_dump() for finding in analysis.findings],
         )
 
-    return {
-        "status": "success",
-        "log_id": log_id,
-        "log_status": log_status,
-        "is_anomaly": bool(anomalies),
-        "anomalies": anomalies,
-        "message": f"Log analyzed and saved as '{log_status}'",
-    }
+    return ServerLogAnalysisResponse(
+        log_id=log_id,
+        log_status=log_status,
+        is_anomaly=has_findings,
+        anomalies=analysis.findings,
+        analysis=analysis,
+        message=f"Log analyzed and saved as '{log_status}'",
+    )
