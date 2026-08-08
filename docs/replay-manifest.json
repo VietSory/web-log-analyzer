@@ -16,11 +16,7 @@
       "author_date": "2026-01-05T20:41:00+07:00",
       "committer_date": "2026-01-05T20:41:00+07:00",
       "rationale": "Prevent generated Python cache files from being versioned and expand ignore rules for local-only artifacts.",
-      "verification": [
-        "reviewed resulting tree",
-        "reviewed .gitignore on workspace branch",
-        "no runtime behavior changed"
-      ]
+      "verification": ["reviewed resulting tree", "reviewed .gitignore on workspace branch", "no runtime behavior changed"]
     },
     {
       "workspace_sha": "0d914592f1337a46b10819116c49ed3d8a53fe63",
@@ -28,10 +24,7 @@
       "author_date": "2026-01-07T21:13:00+07:00",
       "committer_date": "2026-01-07T21:13:00+07:00",
       "rationale": "Remove additional tracked bytecode artifacts under backend and frontend paths.",
-      "verification": [
-        "reviewed resulting tree",
-        "no runtime behavior changed"
-      ]
+      "verification": ["reviewed resulting tree", "no runtime behavior changed"]
     },
     {
       "workspace_sha": "7897c01f9d02be4804af2fba2b36c1dc9791fbad",
@@ -39,10 +32,7 @@
       "author_date": "2026-01-09T19:54:00+07:00",
       "committer_date": "2026-01-09T19:54:00+07:00",
       "rationale": "Remove tracked frontend view bytecode from source control.",
-      "verification": [
-        "reviewed resulting tree",
-        "no runtime behavior changed"
-      ]
+      "verification": ["reviewed resulting tree", "no runtime behavior changed"]
     },
     {
       "workspace_sha": "b69acaf07d40c8fd4bcaf137345a0ddb79d10135",
@@ -50,10 +40,20 @@
       "author_date": "2026-01-12T22:08:00+07:00",
       "committer_date": "2026-01-12T22:08:00+07:00",
       "rationale": "Remove the tracked local SQLite database and backup source file so repository state is reproducible and reviewable.",
+      "verification": ["reviewed resulting tree", "confirmed ignore rules cover database and backup artifacts", "no runtime behavior changed"]
+    },
+    {
+      "workspace_sha": "9b991e34876e6c72a85e03c6841eaeb897a75c3d",
+      "message": "refactor: add typed application settings",
+      "author_date": "2026-01-14T20:36:00+07:00",
+      "committer_date": "2026-01-14T20:36:00+07:00",
+      "rationale": "Introduce validated environment-backed application settings and replace credentialed wildcard CORS defaults with explicit origins, methods, and headers.",
       "verification": [
-        "reviewed resulting tree",
-        "confirmed ignore rules cover database and backup artifacts",
-        "no runtime behavior changed"
+        "reviewed one-commit diff (4 files, 152 changed lines)",
+        "validated Settings defaults with Pydantic 2.13.4 / pydantic-settings 2.14.1",
+        "validated JSON list parsing from the .env example",
+        "validated wildcard CORS rejection when credentials are enabled",
+        "remote clone/runtime suite not executed because the container environment could not resolve github.com"
       ]
     }
   ]
