@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   update:
-    if: github.actor != 'github-actions[bot]' || github.event.head_commit.message != 'chore: record final product documentation in replay manifest'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -23,8 +22,6 @@ jobs:
         with:
           fetch-depth: 0
       - name: Append final product documentation entries
-        env:
-          PRODUCT_HEAD: 293a8f31bb733cc721e51ab96de2e349c85de4c9
         run: |
           python - <<'PY'
           import json
