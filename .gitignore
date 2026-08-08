@@ -1,5 +1,42 @@
-env/
-backend/training_data.csv
-uploads/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.env
+.env.*
+!.env.example
+env/
+venv/
+.venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime data
+uploads/
+backend/uploads/
+backend/training_data.csv
+*.log
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated ML artifacts
+backend/models/*.keras
+backend/models/*.pkl
+
+# Local backups
+*.backup
+*.bak
