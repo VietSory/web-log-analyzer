@@ -24,10 +24,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -35,16 +37,19 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
+      - name: Validate replay manifest
+        run: python scripts/replay_dated_history.py --skip-fetch --workspace-ref HEAD
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q backend frontend
+        run: python -m compileall -q backend frontend scripts
 
       - name: Lint correctness rules
-        run: ruff check backend frontend
+        run: ruff check backend frontend scripts
 
       - name: Run backend tests with coverage
         working-directory: backend
@@ -62,7 +67,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: backend-coverage
           path: ${{ runner.temp }}/coverage.xml
