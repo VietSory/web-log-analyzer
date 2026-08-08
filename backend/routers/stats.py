@@ -1,63 +1,63 @@
-import os
-import pandas as pd
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+
+from config import get_settings
 from core.parser import parse_log_file
+from core.upload_storage import UploadValidationError, resolve_upload_path
 
 router = APIRouter()
-UPLOAD_DIR = "uploads"
+settings = get_settings()
+
+
+def _get_uploaded_file(filename: str) -> Path:
+    try:
+        file_path = resolve_upload_path(filename, settings.upload_dir)
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=404, detail="File not found") from exc
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return file_path
+
 
 @router.get("/stats/{filename}")
 def get_stats(filename: str):
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(file_path): 
-        raise HTTPException(status_code=404, detail="File not found")
-    df = parse_log_file(file_path) 
-    if df.empty: 
+    dataframe = parse_log_file(_get_uploaded_file(filename))
+    if dataframe.empty:
         return {"error": "No data parsed"}
-    
-    # Tính Metrics cơ bản
-    total_req = len(df)
-    unique_ips = int(df['ip'].nunique()) if 'ip' in df.columns else 0
-    avg_size = round(float(df['size'].mean()) / 1024, 2) if 'size' in df.columns else 0
-    
-    error_5xx = df[df['status'] >= 500].shape[0] if 'status' in df.columns else 0
-    error_rate = round((error_5xx / total_req) * 100, 2) if total_req > 0 else 0
-    
-    # Thống kê Status Code
-    status_counts = {}
-    if 'status' in df.columns:
-        s_counts = df['status'].value_counts().head(5)
-        status_counts = {str(k): int(v) for k, v in s_counts.items()}
 
-    # Biểu đồ Traffic theo giờ
-    chart_data = {}
-    if 'datetime' in df.columns:
-        df_time = df.dropna(subset=['datetime'])
-        if not df_time.empty:
-            traffic = df_time.resample('H', on='datetime').size()
-            ts_list = traffic.index.tolist()
-            cnt_list = traffic.values.tolist()
-            for ts, count in zip(ts_list, cnt_list):
-                if count > 0:
-                    time_str = ts.strftime('%Y-%m-%d %H:%M')
-                    chart_data[time_str] = int(count)
+    total_requests = len(dataframe)
+    unique_ips = int(dataframe["ip"].nunique())
+    avg_size = round(float(dataframe["size"].mean()) / 1024, 2)
+    server_errors = dataframe[dataframe["status"] >= 500].shape[0]
+    error_rate = round((server_errors / total_requests) * 100, 2)
+
+    status_counts = dataframe["status"].value_counts().head(5)
+    status_distribution = {str(key): int(value) for key, value in status_counts.items()}
+
+    traffic_chart: dict[str, int] = {}
+    timed = dataframe.dropna(subset=["datetime"]).copy()
+    if not timed.empty:
+        traffic = timed.resample("h", on="datetime").size()
+        for timestamp, count in traffic.items():
+            if count > 0:
+                traffic_chart[timestamp.strftime("%Y-%m-%d %H:%M")] = int(count)
 
     return {
-        "total_requests": total_req,
+        "total_requests": total_requests,
         "unique_ips": unique_ips,
         "avg_body_size": avg_size,
         "error_rate": error_rate,
-        "status_distribution": status_counts,
-        "traffic_chart": chart_data
+        "status_distribution": status_distribution,
+        "traffic_chart": traffic_chart,
     }
+
 
 @router.get("/logs/{filename}")
 def get_logs(filename: str):
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if not os.path.exists(file_path): 
-        raise HTTPException(status_code=404, detail="File not found")    
-    df = parse_log_file(file_path)
-    if df.empty: return []
-    if 'datetime' in df.columns:
-        df['datetime'] = df['datetime'].astype(str)
-    return df.head(10000).to_dict(orient="records")
+    dataframe = parse_log_file(_get_uploaded_file(filename))
+    if dataframe.empty:
+        return []
+    response_frame = dataframe.head(10000).copy()
+    response_frame["datetime"] = response_frame["datetime"].astype(str)
+    return response_frame.to_dict(orient="records")
