@@ -204,6 +204,7 @@ def test_legacy_owned_reports_are_migrated_once(tmp_path, monkeypatch):
     connection = database.get_db_connection(database_path)
     try:
         with connection:
+            database._create_legacy_scan_schema(connection)
             connection.execute(
                 '''
                 INSERT INTO scan_history (
