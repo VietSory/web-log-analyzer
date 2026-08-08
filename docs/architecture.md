@@ -31,7 +31,7 @@ FastAPI backend :8000
 
 ### API layer
 
-FastAPI routers own HTTP concerns: authentication dependencies, Pydantic request validation, status codes, and response serialization. Business behavior that is shared across endpoints belongs under `backend/core/` rather than being copied between routers.
+FastAPI routers own HTTP concerns: authentication dependencies, Pydantic request validation, status codes, and response serialization. Shared business behavior belongs under `backend/core/` or `backend/services/` rather than being copied between routers.
 
 The application middleware provides a validated request correlation ID and process-local rate limiting. Health endpoints are deliberately separate:
 
@@ -88,7 +88,7 @@ Metadata records the schema version, feature schema, input data SHA-256, chronol
 
 ## Persistence
 
-SQLite is used deliberately for the portfolio deployment profile. Connections enable foreign keys and a busy timeout; file-backed databases use WAL mode. A `schema_migrations` table records ordered application migrations. Current migrations cover legacy password storage, legacy scan-history table shape/identifier conversion, and indexes.
+SQLite is used deliberately for the current portfolio deployment profile. Connections enable foreign keys and a busy timeout; file-backed databases use WAL mode. A `schema_migrations` table records ordered application migrations. Current migrations cover legacy password storage, legacy scan-history table shape/identifier conversion, and indexes.
 
 This design is appropriate for one backend process and modest write concurrency. Scaling to several writers or multiple hosts should replace SQLite and the process-local rate limiter with shared infrastructure rather than pretending the existing components are distributed.
 
@@ -107,7 +107,7 @@ The design prefers explicit degradation over hidden fallbacks:
 
 Direct Python dependencies are pinned. GitHub Actions compiles sources, runs Ruff correctness checks, executes pytest with coverage, audits Python dependencies, performs repository/container vulnerability and secret scans, uploads SARIF to code scanning, and publishes CycloneDX SBOM artifacts.
 
-The workspace branch is an engineering staging branch. Release history is reconstructed separately from the machine-readable replay manifest; workspace-only bookkeeping commits are never replayed as product history.
+Release candidates are expected to pass those gates on the exact revision being published. See [Release Runbook](release.md) for the maintainer verification, security-evidence, publishing, and rollback procedure.
 
 ## Known scaling boundaries
 
